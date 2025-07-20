@@ -3,7 +3,7 @@ import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
 import numpy as np
-import drawchat8
+import drawchat
 import uuid
 
 # Constants
@@ -249,7 +249,7 @@ def plot_customer_demand(df, customer_name, material, is_taiwan, title_fontsize,
         return None
     df_filtered = df[df['customer'] == customer_name]
     max_demand = df_filtered['demand'].max() if not df_filtered.empty else 0
-    return drawchat8.plot_customer_demand(
+    return drawchat.plot_customer_demand(
         df, customer_name, 'customer', available_suppliers, 'year', (0, max_demand * 1.4),
         title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, 
         legend_title_fontsize, value_label_fontsize, customer_name_font_size, 
@@ -282,7 +282,7 @@ def plot_price_volume(df, customer_name, material, is_taiwan, title_fontsize, ax
     # Map colors to selected price columns
     color_map = dict(zip(all_price_columns, price_colors))
     selected_colors = [color_map[col] for col in price_columns]
-    return drawchat8.plot_customer_demand_with_price(
+    return drawchat.plot_customer_demand_with_price(
         df, customer_name, 'customer', SUPPLIERS['covestro'], 'year',
         (0, max_demand * 2), (0.5, max_price * 1.5), price_columns, selected_colors,
         title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, 
@@ -307,7 +307,7 @@ def plot_bubble_chart(df, customer_name, material, is_taiwan, title_fontsize, ax
         settings_info += f" | Year: {year_filter}"
     st.info(settings_info)
     try:
-        chart_figure, _, _, _ = drawchat8.plot_customer_bubble_clean_with_median(
+        chart_figure, _, _, _ = drawchat.plot_customer_bubble_clean_with_median(
             df, 'customer', 'demand', 'pocket price', year_filter, bubble_scale, alpha,
             title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize,
             customer_name_font_size, demand_label_font_size, y_min, y_max
@@ -321,7 +321,7 @@ def plot_business_plan(df, customer_name, material, is_taiwan, title_fontsize, a
     """Plot business plan chart"""
     if not validate_dataframe(df, REQUIRED_COLUMNS['business_plan'], material=material):
         return None
-    return drawchat8.plot_customer_business_plan(
+    return drawchat.plot_customer_business_plan(
         df, customer_name, False, title_fontsize, axis_label_fontsize, 
         tick_fontsize, legend_fontsize, value_label_fontsize
     )
