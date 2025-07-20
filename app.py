@@ -308,7 +308,7 @@ def plot_bubble_chart(df, customer_name, material, is_taiwan, title_fontsize, ax
     st.info(settings_info)
     try:
         chart_figure, _, _, _ = drawchat.plot_customer_bubble_clean_with_median(
-            df, 'customer', 'demand', 'pocket price', year_filter, bubble_scale, alpha,
+            df, 'customer', 'covestro', 'pocket price', year_filter, bubble_scale, alpha,
             title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize,
             customer_name_font_size, demand_label_font_size, y_min, y_max
         )
