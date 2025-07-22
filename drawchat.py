@@ -2,14 +2,18 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
 
-def plot_customer_demand(df, customer_name, customer_column, suppliers, year_column, demand_ylim, title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, legend_title_fontsize, value_label_fontsize, customer_name_font_size, demand_label_font_size, y_min, y_max):
+def plot_customer_demand(df, customer_name, customer_column, suppliers, year_column, demand_ylim, title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, legend_title_fontsize, value_label_fontsize, customer_name_font_size, demand_label_font_size, y_min, y_max, show_percentages=True):
     """
     Plot a combined chart with stacked bars for supplier volumes for all years (2022-2025).
     Overlay transparent bars for 'demand' column values for 2022-2024.
     For 2025, overlay a transparent 'demand' bar with 'demand: <value>' label.
     Support custom Y-axis range with dynamic tick steps for volume (demand) axis.
     Handle missing supplier columns by plotting only 'demand' bars.
+    Support showing percentages instead of values for supplier stack labels.
     """
     required_columns = [customer_column, year_column, 'demand']
     missing_columns = [col for col in required_columns if col not in df.columns]
@@ -79,8 +83,15 @@ def plot_customer_demand(df, customer_name, customer_column, suppliers, year_col
                     if show_label:
                         font_size = value_label_fontsize if value_label_fontsize is not None else max(6, min(10, 80//len(available_suppliers)))
                         
+                        # Calculate percentage if requested
+                        if show_percentages and total_height > 0:
+                            percentage = (value / total_height) * 100
+                            label_text = f'{percentage:.1f}%'
+                        else:
+                            label_text = f'{value:.0f}'
+                        
                         ax1.text(bar.get_x() + bar.get_width()/2, label_y, 
-                                f'{value:.0f}',
+                                label_text,
                                 ha='center', va='center', 
                                 fontsize=font_size,
                                 fontweight='bold',
@@ -102,6 +113,7 @@ def plot_customer_demand(df, customer_name, customer_column, suppliers, year_col
         
         for i, (bar, value) in enumerate(zip(bars, demand_values)):
             if value > 0:
+                # For demand-only bars, always show values (not percentages since there's only one bar)
                 ax1.text(bar.get_x() + bar.get_width()/2, value / 2, 
                         f'{value:.0f}',
                         ha='center', va='center', 
@@ -182,7 +194,9 @@ def plot_customer_demand(df, customer_name, customer_column, suppliers, year_col
               fontsize=legend_fontsize,
               title_fontsize=legend_title_fontsize)
     
-    plt.title(f'Demand Analysis for {customer_name} total demand (mt)', 
+    # Update title to indicate percentage mode
+    title_suffix = " (% of total demand)" if show_percentages else " total demand (mt)"
+    plt.title(f'Demand Analysis for {customer_name}{title_suffix}', 
               fontsize=title_fontsize, fontweight='bold', pad=20)
     
     fig.subplots_adjust(bottom=0.18)
@@ -560,11 +574,17 @@ def _calculate_dynamic_tick_step(range_magnitude, is_price=False):
         else:
             return 2000
 
-def plot_customer_bubble_clean_with_median(df, customer_column, demand_column, price_column, year_filter, bubble_scale, alpha, title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, customer_name_font_size, demand_label_font_size, y_min, y_max):
+
+
+#####################################################
+def plot_customer_bubble_clean_with_median(df, customer_column, demand_column, price_column, year_filter, bubble_scale, alpha, title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, customer_name_font_size, demand_label_font_size, y_min, y_max, min_demand_threshold=10):
     """
-    Enhanced bubble chart with smaller bubble sizes, fixed figure size (12x9 inches).
-    Use fixed font sizes for customer names and demand labels.
+    Enhanced interactive bubble chart using Plotly with hover information and interactive features.
+    Added features:
+    - Filter out bubbles with demand below threshold
+    - Improved bubble size scaling to reduce extreme size differences
     """
+    # Data processing (same as original)
     df_filtered = df[df['year'] == year_filter].copy() if year_filter else df.copy()
     
     customer_data = df_filtered.groupby(customer_column).agg({
@@ -575,70 +595,174 @@ def plot_customer_bubble_clean_with_median(df, customer_column, demand_column, p
     if customer_data.empty:
         raise ValueError("No valid data after filtering and aggregation")
     
+    # 1. FILTER OUT SMALL/ZERO VALUES
+    # Remove customers with demand <= threshold
+    customer_data = customer_data[customer_data[demand_column] > min_demand_threshold].copy()
+    
+    if customer_data.empty:
+        raise ValueError(f"No customers with demand > {min_demand_threshold} after filtering")
+    
+    print(f"Filtered out customers with demand <= {min_demand_threshold}. Remaining customers: {len(customer_data)}")
+    
     avg_price = customer_data[price_column].mean()
     median_price = customer_data[price_column].median()
     customer_data = customer_data.sort_values(price_column, ascending=False)
     
     n_customers = len(customer_data)
+    
+    # Generate colors (convert to hex for Plotly)
     if n_customers <= 10:
-        colors = plt.cm.tab10(np.linspace(0, 1, n_customers))
+        colors = px.colors.qualitative.Set1[:n_customers]
     elif n_customers <= 20:
-        colors = plt.cm.tab20(np.linspace(0, 1, n_customers))
+        colors = px.colors.qualitative.Set1 + px.colors.qualitative.Set2
+        colors = colors[:n_customers]
     else:
-        colors = plt.cm.Set3(np.linspace(0, 1, n_customers))
+        colors = px.colors.qualitative.Set3 * ((n_customers // len(px.colors.qualitative.Set3)) + 1)
+        colors = colors[:n_customers]
     
-    fig, ax = plt.subplots(figsize=(12, 9))
-    x_positions = np.arange(n_customers) * 2.5
-    
+    # 2. IMPROVED BUBBLE SIZE CALCULATION
     min_demand = customer_data[demand_column].min()
     max_demand = customer_data[demand_column].max()
-    demand_range = max_demand - min_demand
+   
     
-    base_size = 50 * bubble_scale  # Reduced from 500
-    scale_multiplier = 5  # Reduced from 20
-    scale_factor = scale_multiplier * 50  # Reduced from 300
+    # Use logarithmic scaling to reduce extreme differences
+    def calculate_bubble_size_log(demand, min_demand, max_demand, bubble_scale):
+        """Calculate bubble size using logarithmic scaling to reduce extreme differences"""
+        if demand <= 0:
+            return 20 * bubble_scale
+        
+        # Apply log transformation to reduce extreme differences
+        log_demand = np.log10(demand + 1)  # +1 to avoid log(0)
+        log_min = np.log10(min_demand + 1)
+        log_max = np.log10(max_demand + 1)
+        
+        if log_max == log_min:
+            normalized = 0.5
+        else:
+            normalized = (log_demand - log_min) / (log_max - log_min)
+        
+        # Define size range
+        min_size = 40 * bubble_scale
+        max_size = 180 * bubble_scale  # Reduced max size for better proportion
+        
+        bubble_size = min_size + (normalized * (max_size - min_size))
+        return bubble_size
     
-    for i, (_, row) in enumerate(customer_data.iterrows()):
-        customer_name = row[customer_column]
-        price = row[price_column]
+    # Alternative: Square root scaling (less aggressive than log)
+    def calculate_bubble_size_sqrt(demand, min_demand, max_demand, bubble_scale):
+        """Calculate bubble size using square root scaling"""
+        if demand <= 0:
+            return 20 * bubble_scale
+        
+        sqrt_demand = np.sqrt(demand)
+        sqrt_min = np.sqrt(min_demand)
+        sqrt_max = np.sqrt(max_demand)
+        
+        if sqrt_max == sqrt_min:
+            normalized = 0.5
+        else:
+            normalized = (sqrt_demand - sqrt_min) / (sqrt_max - sqrt_min)
+        
+        min_size = 30 * bubble_scale
+        max_size = 120 * bubble_scale
+        
+        bubble_size = min_size + (normalized * (max_size - min_size))
+        return bubble_size
+    
+    # Choose scaling method (you can switch between them)
+    use_log_scaling = True  # Set to False to use sqrt scaling
+    
+    bubble_sizes = []
+    for _, row in customer_data.iterrows():
         demand = row[demand_column]
         
-        if demand_range > 0:
-            normalized_demand = (demand - min_demand) / demand_range
-            bubble_size = base_size + (normalized_demand * scale_factor * 10)  # Reduced multiplier from 50 to 10
+        if use_log_scaling:
+            bubble_size = calculate_bubble_size_log(demand, min_demand, max_demand, bubble_scale)
         else:
-            bubble_size = base_size + (scale_factor * 5)  # Reduced from 25 to 5
+            bubble_size = calculate_bubble_size_sqrt(demand, min_demand, max_demand, bubble_scale)
         
-        max_bubble_size = min(bubble_size, 5000) if bubble_scale <= 5.0 else bubble_size  # Reduced max size from 15000 to 5000
-        max_bubble_size = max(max_bubble_size, base_size)
-        
-        ax.scatter(x_positions[i], price, 
-                  s=max_bubble_size,
-                  c=[colors[i]], 
-                  alpha=alpha, 
-                  edgecolors='black', 
-                  linewidth=1)  # Reduced linewidth for smaller bubbles
-        
-        ax.annotate(customer_name, 
-                   (x_positions[i], price), 
-                   xytext=(0, -15), textcoords='offset points',
-                   ha='center', va='top', 
-                   fontsize=customer_name_font_size, fontweight='bold',
-                   rotation=45,
-                   bbox=dict(boxstyle='round,pad=0.5', facecolor='white', 
-                           alpha=0.9, edgecolor='gray'))
-        
-        ax.annotate(f'{demand:.0f}', 
-                   (x_positions[i], price), 
-                   ha='center', va='center', 
-                   fontsize=demand_label_font_size, fontweight='bold', color='black')
+        bubble_sizes.append(bubble_size)
     
-    _add_reference_lines(ax, avg_price, median_price, max(x_positions))
+    # Create the figure
+    fig = go.Figure()
     
-    _customize_plot_with_y_range(ax, price_column, axis_label_fontsize, tick_fontsize, 
-                                legend_fontsize, avg_price, median_price, y_min, y_max)
+    # Add bubble scatter plot
+    fig.add_trace(go.Scatter(
+        x=list(range(n_customers)),
+        y=customer_data[price_column],
+        mode='markers+text',
+        marker=dict(
+            size=[size/8 for size in bubble_sizes],  # Adjusted scaling for Plotly
+            color=colors,
+            opacity=alpha,
+            line=dict(width=2, color='black'),
+            sizemode='diameter'
+        ),
+        text=customer_data[customer_column],
+        textposition='bottom center',
+        textfont=dict(
+            size=customer_name_font_size,
+            color='black'
+        ),
+        customdata=customer_data[demand_column],
+        hovertemplate=(
+            '<b>%{text}</b><br>' +
+            f'{price_column.replace("_", " ").title()}: %{{y:.2f}} $/kg<br>' +
+            f'{demand_column.replace("_", " ").title()}: %{{customdata:.0f}} mt<br>' +
+            '<extra></extra>'
+        ),
+        name='Customers',
+        showlegend=False
+    ))
     
-    title_text = f'Pocket Prices vs Average & Median {year_filter} (Scale: {bubble_scale:.1f}'
+    # Add demand labels inside bubbles
+    fig.add_trace(go.Scatter(
+        x=list(range(n_customers)),
+        y=customer_data[price_column],
+        mode='text',
+        text=[f'{demand:.0f}' for demand in customer_data[demand_column]],
+        textfont=dict(
+            size=demand_label_font_size,
+            color='black',
+            family='Arial Black'
+        ),
+        hoverinfo='skip',
+        showlegend=False
+    ))
+    '''''
+    # Add average price line
+    fig.add_hline(
+        y=avg_price,
+        line_dash="dash",
+        line_color="red",
+        line_width=3,
+        annotation_text=f"Average: {avg_price:.2f}",
+        annotation_position="top right",
+        annotation_font_size=12,
+        annotation_font_color="red",
+        annotation_bgcolor="white",
+        annotation_bordercolor="red",
+        annotation_borderwidth=1
+    )
+    
+    # Add median price line
+    fig.add_hline(
+        y=median_price,
+        line_dash="dash",
+        line_color="green",
+        line_width=3,
+        annotation_text=f"Median: {median_price:.2f}",
+        annotation_position="bottom right" if abs(avg_price - median_price) < 0.5 else "top right",
+        annotation_font_size=12,
+        annotation_font_color="green",
+        annotation_bgcolor="white",
+        annotation_bordercolor="green",
+        annotation_borderwidth=1
+    )
+    '''
+    # Customize layout
+    scaling_method = "Log" if use_log_scaling else "Sqrt"
+    title_text = f'Pocket Prices {year_filter} (Scale: {bubble_scale:.1f}, {scaling_method} scaling, Min: {min_demand_threshold})'
     if y_min is not None and y_max is not None:
         title_text += f', Y-range: {y_min:.1f}-{y_max:.1f}'
     title_text += ')'
@@ -646,64 +770,272 @@ def plot_customer_bubble_clean_with_median(df, customer_column, demand_column, p
     if bubble_scale > 10.0:
         title_text += ' - Overlap Mode'
     
-    plt.title(title_text, fontsize=title_fontsize, fontweight='bold')
-    plt.tight_layout()
-    
-    return fig, avg_price, median_price, customer_data
-
-def _add_reference_lines(ax, avg_price, median_price, max_x_pos):
-    """Add average and median reference lines with offset annotations"""
-    ax.axhline(y=avg_price, color='red', linestyle='--', linewidth=3, alpha=0.8)
-    ax.axhline(y=median_price, color='green', linestyle='--', linewidth=3, alpha=0.8)
-    
-    offset = 0.5
-    
-    if abs(avg_price - median_price) < 0.5:
-        avg_y_offset = offset
-        median_y_offset = -offset
-    else:
-        avg_y_offset = 0
-        median_y_offset = 0
-    
-    ax.text(max_x_pos * 0.85, avg_price + avg_y_offset, f'Average: {avg_price:.2f}', 
-           fontsize=12, fontweight='bold', color='red',
-           bbox=dict(boxstyle='round,pad=0.4', facecolor='white', 
-                    alpha=0.9, edgecolor='red'))
-    
-    ax.text(max_x_pos * 0.85, median_price + median_y_offset, f'Median: {median_price:.2f}', 
-           fontsize=12, fontweight='bold', color='green',
-           bbox=dict(boxstyle='round,pad=0.4', facecolor='white', 
-                    alpha=0.9, edgecolor='green'))
-
-def _customize_plot_with_y_range(ax, price_column, axis_label_fontsize, tick_fontsize, legend_fontsize, avg_price, median_price, y_min, y_max):
-    """Customize plot appearance with Y-axis range and dynamic tick steps"""
-    ax.set_ylabel(f'{price_column.replace("_", " ").title()} ($/kg)', fontsize=axis_label_fontsize)
-    ax.set_xlabel('Customers', fontsize=axis_label_fontsize)
-    ax.set_xticks([])
-    ax.grid(True, alpha=0.3, axis='y')
-    ax.tick_params(axis='both', which='major', labelsize=tick_fontsize)
-    
+    # Set Y-axis range
     if y_min is not None and y_max is not None:
-        ax.set_ylim(y_min, y_max)
-        tick_step = _calculate_dynamic_tick_step(y_max - y_min, True)
-        y_ticks = np.arange(y_min, y_max + tick_step, tick_step)
-        ax.set_yticks(y_ticks)
-        ax.set_yticklabels([f'{tick:.1f}' for tick in y_ticks])
+        y_range = [y_min, y_max]
     else:
-        price_min = min(avg_price, median_price)
-        price_max = max(avg_price, median_price)
+        price_min = min(avg_price, median_price, customer_data[price_column].min())
+        price_max = max(avg_price, median_price, customer_data[price_column].max())
         range_magnitude = price_max - price_min
         padding = max(0.5, range_magnitude * 0.1)
-        ax.set_ylim(max(0, price_min - padding), price_max + padding)
-        tick_step = _calculate_dynamic_tick_step(price_max - price_min + 2 * padding, True)
-        y_ticks = np.arange(max(0, price_min - padding), price_max + padding + tick_step, tick_step)
-        ax.set_yticks(y_ticks)
-        ax.set_yticklabels([f'{tick:.1f}' for tick in y_ticks])
+        y_range = [max(0, price_min - padding), price_max + padding]
     
-    legend_elements = [
-        plt.Line2D([0], [0], color='red', lw=3, linestyle='--', 
-                  label=f'Average: {avg_price:.2f}'),
-        plt.Line2D([0], [0], color='green', lw=3, linestyle='--', 
-                  label=f'Median: {median_price:.2f}')
-    ]
-    ax.legend(handles=legend_elements, loc='upper right', fontsize=legend_fontsize)
+    fig.update_layout(
+        title=dict(
+            text=title_text,
+            font=dict(size=title_fontsize, family='Arial Black'),
+            x=0.5,
+            xanchor='center'
+        ),
+        xaxis=dict(
+            title=dict(
+                text='Customers',
+                font=dict(size=axis_label_fontsize)
+            ),
+            showticklabels=False,
+            showgrid=False,
+            zeroline=False,
+            range=[-0.5, n_customers - 0.5]
+        ),
+        yaxis=dict(
+            title=dict(
+                text=f'{price_column.replace("_", " ").title()} ($/kg)',
+                font=dict(size=axis_label_fontsize)
+            ),
+            tickfont=dict(size=tick_fontsize),
+            gridcolor='lightgray',
+            gridwidth=1,
+            griddash='dot',
+            range=y_range
+        ),
+        hoverlabel=dict(
+        bgcolor="white",           # Background color of hover box
+        bordercolor="black",       # Border color
+        font_size=16,             # Font size (default is usually 12)
+        font_family="Arial",      # Font family
+        font_color="blue"        # Font color (default is grey)
+        ),
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        width=1200,
+        height=900,
+        margin=dict(l=80, r=80, t=100, b=80),
+        hovermode='closest'
+    )
+     
+    return fig, avg_price, median_price, customer_data
+#############################
+def plot_customer_bubble_centered(df, customer_column, sow_column, ppd_column, volume_column, year_filter, bubble_scale=1.0, alpha=0.6, 
+                                 title_fontsize=20, axis_label_fontsize=16, tick_fontsize=12, customer_name_font_size=12, 
+                                 volume_label_font_size=10, min_volume_threshold=10, y_min=None, y_max=None):
+    """
+    Enhanced interactive bubble chart using Plotly with centered axes (sow=50, ppd=0).
+    Features:
+    - X-axis: sow < 50 to the left, > 50 to the right, origin at sow=50
+    - Y-axis: ppd < 0 below, > 0 above, origin at ppd=0
+    - Bubble size: volume with logarithmic or square root scaling
+    - Filter out customers with volume below threshold
+    - Colors and styling adapted from the provided function
+    """
+    # Data processing
+    df_filtered = df[df['year'] == year_filter].copy() if year_filter else df.copy()
+    
+    customer_data = df_filtered.groupby(customer_column).agg({
+        sow_column: 'mean',
+        ppd_column: 'mean',
+        volume_column: 'sum'
+    }).reset_index().dropna(subset=[sow_column, ppd_column, volume_column])
+    
+    if customer_data.empty:
+        raise ValueError("No valid data after filtering and aggregation")
+    
+    # Filter out customers with volume <= threshold
+    customer_data = customer_data[customer_data[volume_column] > min_volume_threshold].copy()
+    
+    if customer_data.empty:
+        raise ValueError(f"No customers with volume > {min_volume_threshold} after filtering")
+    
+    print(f"Filtered out customers with volume <= {min_volume_threshold}. Remaining customers: {len(customer_data)}")
+    
+    # Shift sow to center at 50
+    customer_data['sow_shifted'] = customer_data[sow_column] - 50
+    
+    n_customers = len(customer_data)
+    
+    # Generate colors (convert to hex for Plotly)
+    if n_customers <= 10:
+        colors = px.colors.qualitative.Set1[:n_customers]
+    elif n_customers <= 20:
+        colors = px.colors.qualitative.Set1 + px.colors.qualitative.Set2
+        colors = colors[:n_customers]
+    else:
+        colors = px.colors.qualitative.Set3 * ((n_customers // len(px.colors.qualitative.Set3)) + 1)
+        colors = colors[:n_customers]
+    
+    # Bubble size calculation (adapted from provided function)
+    min_volume = customer_data[volume_column].min()
+    max_volume = customer_data[volume_column].max()
+    
+    def calculate_bubble_size_log(volume, min_volume, max_volume, bubble_scale):
+        """Calculate bubble size using logarithmic scaling"""
+        if volume <= 0:
+            return 20 * bubble_scale
+        log_volume = np.log10(volume + 1)
+        log_min = np.log10(min_volume + 1)
+        log_max = np.log10(max_volume + 1)
+        
+        if log_max == log_min:
+            normalized = 0.5
+        else:
+            normalized = (log_volume - log_min) / (log_max - log_min)
+        
+        min_size = 40 * bubble_scale
+        max_size = 180 * bubble_scale
+        return min_size + (normalized * (max_size - min_size))
+    
+    def calculate_bubble_size_sqrt(volume, min_volume, max_volume, bubble_scale):
+        """Calculate bubble size using square root scaling"""
+        if volume <= 0:
+            return 20 * bubble_scale
+        sqrt_volume = np.sqrt(volume)
+        sqrt_min = np.sqrt(min_volume)
+        sqrt_max = np.sqrt(max_volume)
+        
+        if sqrt_max == sqrt_min:
+            normalized = 0.5
+        else:
+            normalized = (sqrt_volume - sqrt_min) / (sqrt_max - sqrt_min)
+        
+        min_size = 30 * bubble_scale
+        max_size = 120 * bubble_scale
+        return min_size + (normalized * (max_size - min_size))
+    
+    use_log_scaling = True  # Set to False for sqrt scaling
+    bubble_sizes = []
+    for _, row in customer_data.iterrows():
+        volume = row[volume_column]
+        bubble_size = calculate_bubble_size_log(volume, min_volume, max_volume, bubble_scale) if use_log_scaling else calculate_bubble_size_sqrt(volume, min_volume, max_volume, bubble_scale)
+        bubble_sizes.append(bubble_size / 8)  # Adjust for Plotly scaling
+    
+    # Create the figure
+    fig = go.Figure()
+    
+    # Add bubble scatter plot
+    fig.add_trace(go.Scatter(
+        x=customer_data['sow_shifted'],
+        y=customer_data[ppd_column],
+        mode='markers+text',
+        marker=dict(
+            size=bubble_sizes,
+            color=colors,
+            opacity=alpha,
+            line=dict(width=2, color='black'),
+            sizemode='diameter'
+        ),
+        text=customer_data[customer_column],
+        textposition='top center',
+        textfont=dict(
+            size=customer_name_font_size,
+            color='black',
+            family='Arial'
+        ),
+        customdata=customer_data[[sow_column, volume_column]],
+        hovertemplate=(
+            '<b>%{text}</b><br>' +
+            f'SOW: %{{customdata[0]:.2f}}<br>' +
+            f'PPD: %{{y:.6f}}<br>' +
+            f'Volume: %{{customdata[1]:.0f}} mt<br>' +
+            '<extra></extra>'
+        ),
+        name='Customers',
+        showlegend=False
+    ))
+    
+    # Add volume labels inside bubbles
+    fig.add_trace(go.Scatter(
+        x=customer_data['sow_shifted'],
+        y=customer_data[ppd_column],
+        mode='text',
+        text=[f'{volume:.0f}' for volume in customer_data[volume_column]],
+        textfont=dict(
+            size=volume_label_font_size,
+            color='black',
+            family='Arial Black'
+        ),
+        hoverinfo='skip',
+        showlegend=False
+    ))
+    
+    # Calculate ranges for axes
+    sow_shifted_min = customer_data['sow_shifted'].min()
+    sow_shifted_max = customer_data['sow_shifted'].max()
+    x_range = [min(-50, sow_shifted_min - 5), max(50, sow_shifted_max + 5)]
+    
+    if y_min is not None and y_max is not None:
+        y_range = [y_min, y_max]
+    else:
+        ppd_min = customer_data[ppd_column].min()
+        ppd_max = customer_data[ppd_column].max()
+        range_magnitude = ppd_max - ppd_min
+        padding = max(0.005, range_magnitude * 0.1)
+        y_range = [ppd_min - padding, ppd_max + padding]
+    
+    # Customize layout
+    scaling_method = "Log" if use_log_scaling else "Sqrt"
+    title_text = f'Customer Bubble Chart {year_filter} (Scale: {bubble_scale:.1f}, {scaling_method} scaling, Min Volume: {min_volume_threshold})'
+    if y_min is not None and y_max is not None:
+        title_text += f', Y-range: {y_min:.1f}-{y_max:.1f}'
+    
+    fig.update_layout(
+        title=dict(
+            text=title_text,
+            font=dict(size=title_fontsize, family='Arial Black'),
+            x=0.5,
+            xanchor='center'
+        ),
+        xaxis=dict(
+            title=dict(
+                text='SOW (<50 left, >50 right)',
+                font=dict(size=axis_label_fontsize)
+            ),
+            tickfont=dict(size=tick_fontsize),
+            gridcolor='lightgray',
+            gridwidth=1,
+            griddash='dot',
+            zeroline=True,
+            zerolinecolor='black',
+            zerolinewidth=2,
+            range=x_range,
+            tickvals=[-50, -25, 0, 25, 50],
+            ticktext=['0', '25', '50', '75', '100']
+        ),
+        yaxis=dict(
+            title=dict(
+                text='PPD (<0 down, >0 up)',
+                font=dict(size=axis_label_fontsize)
+            ),
+            tickfont=dict(size=tick_fontsize),
+            gridcolor='lightgray',
+            gridwidth=1,
+            griddash='dot',
+            zeroline=True,
+            zerolinecolor='black',
+            zerolinewidth=2,
+            range=y_range
+        ),
+        hoverlabel=dict(
+            bgcolor="white",
+            bordercolor="black",
+            font_size=16,
+            font_family="Arial",
+            font_color="blue"
+        ),
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        width=1200,
+        height=900,
+        margin=dict(l=80, r=80, t=100, b=80),
+        hovermode='closest'
+    )
+    
+    return fig

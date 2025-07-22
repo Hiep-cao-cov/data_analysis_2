@@ -19,12 +19,13 @@ DEFAULT_PATHS = {
     'tdi': 'data/VN_TDI_final.csv',
     'tdi_bp': 'data/VN_TDI_BP_23_27.csv',
     'tw_tdi': 'data/TW_TDI_final.csv',
-    'tw_tdi_bp': 'data/TW_TDI_BP_23_27.csv'
+    'tw_tdi_bp': 'data/TW_TDI_BP_23_27.csv',
+    'vn_ppd_2024': 'data/VN_PPD_2024.csv'
 }
 
 SUPPLIERS = {
-    'mdi': ['covestro', 'tosoh', 'wanhua', 'kmc', 'basf', 'sabic', 'huntsman'],
-    'tdi': ['covestro', 'mcns', 'wanhua', 'basf', 'hanwha', 'sabic'],
+    'mdi': ['covestro', 'tosoh', 'wanhua', 'kmc', 'basf', 'sabic', 'huntsman','other'],
+    'tdi': ['covestro', 'mcns', 'wanhua', 'basf', 'hanwha', 'sabic','other'],
     'covestro': ['covestro']
 }
 
@@ -199,7 +200,7 @@ def get_chart_config(chart_type, customer_name_font_size, demand_label_font_size
             'demand_label_font_size': demand_label_font_size,
             'y_min': y_min,
             'y_max': y_max
-        },
+        }, 
         "Account price vs Volume": {
             'title_fontsize': 22,
             'axis_label_fontsize': 20,
@@ -426,7 +427,7 @@ def main():
             'price_volume_y_max': None,
             'y_demand_min': None,
             'y_demand_max': None,
-            'bubble_scale': 1.0,
+            'bubble_scale': 5.0,
             'bubble_alpha': 0.7,
             'use_custom_y_range': False,
             'use_custom_bubble_y_range': False,
@@ -951,10 +952,13 @@ def main():
                             chart_config['tick_fontsize'], chart_config['legend_fontsize'],
                             chart_config['value_label_fontsize']
                         )
-                    
+                     
                     if chart_figure:
-                        st.pyplot(chart_figure)
-                        st.success("Chart generated successfully! 🎉")
+                         if chart_type == "Customer bubble Chart":
+                             st.plotly_chart(chart_figure, use_container_width=True)
+                         else:
+                                st.pyplot(chart_figure)
+                         st.success("Chart generated successfully! 🎉")
                     else:
                         st.error("Failed to generate chart due to invalid data or settings.")
         else:
