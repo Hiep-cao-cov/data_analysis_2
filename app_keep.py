@@ -1,16 +1,16 @@
 import os
 import pandas as pd
 import streamlit as st
+import matplotlib.pyplot as plt
 import numpy as np
-import plotly.graph_objects as go
 import drawchat
+import uuid
 
 # Constants
 REQUIRED_COLUMNS = {
     'demand_charts': ['customer', 'demand'],
     'price_charts': ['customer', 'demand', 'pocket price'],
-    'business_plan': ['customer', 'year', 'min', 'base', 'max'],
-    'bubble_centered': ['customer', 'year', 'sow', 'ppd', 'volume']
+    'business_plan': ['customer', 'year', 'min', 'base', 'max']
 }
 
 DEFAULT_PATHS = {
@@ -21,15 +21,15 @@ DEFAULT_PATHS = {
     'tw_tdi': 'data/TW_TDI_final.csv',
     'tw_tdi_bp': 'data/TW_TDI_BP_23_27.csv',
     'vn_ppd_2024': 'data/VN_PPD_2024.csv'
-} 
+}
 
 SUPPLIERS = {
-    'mdi': ['covestro', 'tosoh', 'wanhua', 'kmc', 'basf', 'sabic', 'huntsman', 'other'],
-    'tdi': ['covestro', 'mcns', 'wanhua', 'basf', 'hanwha', 'sabic', 'other'],
+    'mdi': ['covestro', 'tosoh', 'wanhua', 'kmc', 'basf', 'sabic', 'huntsman','other'],
+    'tdi': ['covestro', 'mcns', 'wanhua', 'basf', 'hanwha', 'sabic','other'],
     'covestro': ['covestro']
 }
 
-CHART_TYPES = ["Customer Demand", "Account price vs Volume", "Business plan", "Customer bubble Chart", "Customer Bubble Chart (Centered)"]
+CHART_TYPES = ["Customer Demand", "Account price vs Volume", "Business plan", "Customer bubble Chart"]
 COUNTRIES = ["Vietnam", "Taiwan"]
 MATERIALS = ["TDI", "MDI"]
 
@@ -49,7 +49,7 @@ def load_csv(file_path, uploaded_file=None, encoding='utf-8'):
         st.error(f"Error loading file {file_path}: {str(e)}")
         return pd.DataFrame()
 
-def validate_dataframe(df, required_columns, material=None, country=None, chart_type=None):
+def validate_dataframe(df, required_columns, material=None, country=None):
     """Validate DataFrame has required columns, data types, and valid ranges"""
     if df.empty:
         st.error("DataFrame is empty")
@@ -67,23 +67,16 @@ def validate_dataframe(df, required_columns, material=None, country=None, chart_
             st.error(f"Column '{col}' contains missing values")
             return False
     
-    # Check numeric types and non-negative values for non-Business Plan and non-centered bubble chart columns
+    # Check numeric types and non-negative values for non-Business Plan columns
     numeric_cols = ['demand', 'pocket price', 'year',
                     'covestro', 'tosoh', 'wanhua', 'kmc', 'basf', 'sabic', 'huntsman',
-                    'mcns', 'hanwha', 'other', 'vn_pp', 'tw_pp', 'seap_pp', 'apac_pp',
-                    'sow', 'volume']
+                    'mcns', 'hanwha', 'other', 'vn_pp', 'tw_pp', 'seap_pp', 'apac_pp']
     for col in numeric_cols:
         if col in df.columns and not pd.api.types.is_numeric_dtype(df[col]):
             st.error(f"Column '{col}' must be numeric")
             return False
         if col in df.columns and (df[col] < 0).any():
             st.error(f"Column '{col}' contains negative values, which are not allowed")
-            return False
-    
-    # Allow negative values for 'ppd' in centered bubble chart
-    if chart_type == "Customer Bubble Chart (Centered)" and 'ppd' in df.columns:
-        if not pd.api.types.is_numeric_dtype(df['ppd']):
-            st.error("Column 'ppd' must be numeric")
             return False
     
     # For Business Plan, only check numeric types for min, base, max
@@ -137,37 +130,38 @@ def load_country_data(country, data_source, uploaded_files=None):
     uploaded_files = uploaded_files or {}
     
     if country == "Vietnam":
+        # MDI Customer Data
         data_dict['mdi'] = load_csv(DEFAULT_PATHS['mdi'], uploaded_files.get('mdi'))
         if not data_dict['mdi'].empty:
             if not validate_dataframe(data_dict['mdi'], REQUIRED_COLUMNS['price_charts'], material='MDI', country=country):
                 data_dict['mdi'] = pd.DataFrame()
         
+        # MDI Business Plan
         data_dict['mdi_bp'] = load_csv(DEFAULT_PATHS['mdi_bp'], uploaded_files.get('mdi_bp'))
         if not data_dict['mdi_bp'].empty:
             if not validate_dataframe(data_dict['mdi_bp'], REQUIRED_COLUMNS['business_plan'], material='MDI', country=country):
                 data_dict['mdi_bp'] = pd.DataFrame()
         
+        # TDI Customer Data
         data_dict['tdi'] = load_csv(DEFAULT_PATHS['tdi'], uploaded_files.get('tdi'))
         if not data_dict['tdi'].empty:
             if not validate_dataframe(data_dict['tdi'], REQUIRED_COLUMNS['price_charts'], material='TDI', country=country):
                 data_dict['tdi'] = pd.DataFrame()
         
+        # TDI Business Plan
         data_dict['tdi_bp'] = load_csv(DEFAULT_PATHS['tdi_bp'], uploaded_files.get('tdi_bp'))
         if not data_dict['tdi_bp'].empty:
             if not validate_dataframe(data_dict['tdi_bp'], REQUIRED_COLUMNS['business_plan'], material='TDI', country=country):
                 data_dict['tdi_bp'] = pd.DataFrame()
-        
-        data_dict['vn_ppd_2024'] = load_csv(DEFAULT_PATHS['vn_ppd_2024'], uploaded_files.get('vn_ppd_2024'))
-        if not data_dict['vn_ppd_2024'].empty:
-            if not validate_dataframe(data_dict['vn_ppd_2024'], REQUIRED_COLUMNS['bubble_centered'], chart_type="Customer Bubble Chart (Centered)"):
-                data_dict['vn_ppd_2024'] = pd.DataFrame()
     
     else:  # Taiwan
+        # TDI Customer Data
         data_dict['tw_tdi'] = load_csv(DEFAULT_PATHS['tw_tdi'], uploaded_files.get('tw_tdi'))
         if not data_dict['tw_tdi'].empty:
             if not validate_dataframe(data_dict['tw_tdi'], REQUIRED_COLUMNS['price_charts'], material='TDI', country=country):
                 data_dict['tw_tdi'] = pd.DataFrame()
         
+        # TDI Business Plan
         data_dict['tw_tdi_bp'] = load_csv(DEFAULT_PATHS['tw_tdi_bp'], uploaded_files.get('tw_tdi_bp'))
         if not data_dict['tw_tdi_bp'].empty:
             if not validate_dataframe(data_dict['tw_tdi_bp'], REQUIRED_COLUMNS['business_plan'], material='TDI', country=country):
@@ -178,9 +172,7 @@ def load_country_data(country, data_source, uploaded_files=None):
 @st.cache_data
 def get_dataframe(chart_type, material, data_dict):
     """Select appropriate dataframe based on chart type and material"""
-    if chart_type == "Customer Bubble Chart (Centered)":
-        key = 'vn_ppd_2024'  # Use dedicated DataFrame for centered bubble chart
-    elif material == 'MDI' and chart_type == "Business plan":
+    if material == 'MDI' and chart_type == "Business plan":
         key = 'mdi_bp'
     elif material == 'MDI':
         key = 'mdi'
@@ -200,10 +192,10 @@ def get_chart_config(chart_type, customer_name_font_size, demand_label_font_size
         "Customer Demand": {
             'title_fontsize': 20,
             'axis_label_fontsize': 16,
-            'tick_fontsize': 20,
-            'legend_fontsize': 18,
+            'tick_fontsize': 16,
+            'legend_fontsize': 12,
             'legend_title_fontsize': 18,
-            'value_label_fontsize': 18,
+            'value_label_fontsize': 14,
             'customer_name_font_size': customer_name_font_size,
             'demand_label_font_size': demand_label_font_size,
             'y_min': y_min,
@@ -214,10 +206,10 @@ def get_chart_config(chart_type, customer_name_font_size, demand_label_font_size
             'axis_label_fontsize': 20,
             'tick_fontsize': 18,
             'legend_fontsize': 16,
-            'legend_title_fontsize': 18,
-            'price_annotation_fontsize': 18,
+            'legend_title_fontsize': 16,
+            'price_annotation_fontsize': 16,
             'annotation_spacing': 25,
-            'value_label_fontsize': 18,
+            'value_label_fontsize': 14,
             'customer_name_font_size': customer_name_font_size,
             'demand_label_font_size': demand_label_font_size,
             'y_min': price_volume_y_min,
@@ -242,28 +234,14 @@ def get_chart_config(chart_type, customer_name_font_size, demand_label_font_size
             'y_min': bubble_y_min,
             'y_max': bubble_y_max,
             'customer_name_font_size': customer_name_font_size,
-            'demand_label_font_size': demand_label_font_size,
-            'min_demand_threshold': 10
-        },
-        "Customer Bubble Chart (Centered)": {
-            'title_fontsize': 20,
-            'axis_label_fontsize': 16,
-            'tick_fontsize': 16,
-            'legend_fontsize': 12,
-            'bubble_scale': bubble_scale,
-            'alpha': bubble_alpha,
-            'y_min': bubble_y_min,
-            'y_max': bubble_y_max,
-            'customer_name_font_size': customer_name_font_size,
-            'demand_label_font_size': demand_label_font_size,
-            'min_volume_threshold': 50
+            'demand_label_font_size': demand_label_font_size
         }
     }
     return configs.get(chart_type, {})
 
 def plot_customer_demand(df, customer_name, material, is_taiwan, title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, legend_title_fontsize, value_label_fontsize, customer_name_font_size, demand_label_font_size, y_min, y_max):
     """Plot customer demand chart"""
-    if not validate_dataframe(df, REQUIRED_COLUMNS['demand_charts'], material=material, chart_type="Customer Demand"):
+    if not validate_dataframe(df, REQUIRED_COLUMNS['demand_charts'], material=material):
         return None
     suppliers = SUPPLIERS[material.lower()]
     available_suppliers = [col for col in suppliers if col in df.columns]
@@ -281,7 +259,7 @@ def plot_customer_demand(df, customer_name, material, is_taiwan, title_fontsize,
 
 def plot_price_volume(df, customer_name, material, is_taiwan, title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, legend_title_fontsize, price_annotation_fontsize, annotation_spacing, value_label_fontsize, customer_name_font_size, demand_label_font_size, y_min, y_max, y_demand_min, y_demand_max, selected_price_columns):
     """Plot price vs volume chart with selected price columns"""
-    if not validate_dataframe(df, REQUIRED_COLUMNS['price_charts'], material=material, chart_type="Account price vs Volume"):
+    if not validate_dataframe(df, REQUIRED_COLUMNS['price_charts'], material=material):
         return None
     df_filtered = df[df['customer'] == customer_name]
     max_demand = df_filtered['demand'].max() if not df_filtered.empty else 0
@@ -297,10 +275,12 @@ def plot_price_volume(df, customer_name, material, is_taiwan, title_fontsize, ax
         )
     }
     all_price_columns, price_colors = price_config[material]
+    # Filter selected price columns that exist in the DataFrame
     price_columns = [col for col in selected_price_columns if col in df.columns and col in all_price_columns]
     if not price_columns:
         st.error(f"No valid selected price columns for {material}")
         return None
+    # Map colors to selected price columns
     color_map = dict(zip(all_price_columns, price_colors))
     selected_colors = [color_map[col] for col in price_columns]
     return drawchat.plot_customer_demand_with_price(
@@ -314,7 +294,7 @@ def plot_price_volume(df, customer_name, material, is_taiwan, title_fontsize, ax
 
 def plot_bubble_chart(df, customer_name, material, is_taiwan, title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, bubble_scale, alpha, customer_name_font_size, demand_label_font_size, y_min, y_max, year_filter):
     """Plot bubble chart with fixed size"""
-    if not validate_dataframe(df, REQUIRED_COLUMNS['price_charts'], material=material, chart_type="Customer bubble Chart"):
+    if not validate_dataframe(df, REQUIRED_COLUMNS['price_charts'], material=material):
         return None
     if 'year' not in df.columns and year_filter is not None:
         st.warning("Year column not found. Ignoring year filter.")
@@ -338,39 +318,12 @@ def plot_bubble_chart(df, customer_name, material, is_taiwan, title_fontsize, ax
         st.error(f"Error generating bubble chart: {str(e)}")
         return None
 
-def plot_bubble_chart_centered(df, material, title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, bubble_scale, alpha, customer_name_font_size, demand_label_font_size, y_min, y_max, year_filter, min_volume_threshold=50):
-    """Plot centered bubble chart with SOW and PPD axes"""
-    if not validate_dataframe(df, REQUIRED_COLUMNS['bubble_centered'], chart_type="Customer Bubble Chart (Centered)"):
-        return None
-    if 'year' not in df.columns and year_filter is not None:
-        st.warning("Year column not found. Ignoring year filter.")
-        year_filter = None
-    settings_info = f"📊 Bubble Scale: {bubble_scale:.1f} | Transparency: {alpha:.1f} | "
-    settings_info += f"Customer Name Font Size: {customer_name_font_size} | "
-    settings_info += f"Volume Label Font Size: {demand_label_font_size} | "
-    settings_info += f"Min Volume Threshold: {min_volume_threshold}"
-    if y_min is not None and y_max is not None:
-        settings_info += f" | Y-axis: {y_min:.1f} - {y_max:.1f}"
-    if year_filter is not None:
-        settings_info += f" | Year: {year_filter}"
-    st.info(settings_info)
-    try:
-        chart_figure = drawchat.plot_customer_bubble_centered(
-            df, 'customer', 'sow', 'ppd', 'volume', year_filter, bubble_scale, alpha,
-            title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize,
-            customer_name_font_size, demand_label_font_size, min_volume_threshold, y_min, y_max
-        )
-        return chart_figure
-    except ValueError as e:
-        st.error(f"Error generating centered bubble chart: {str(e)}")
-        return None
-
 def plot_business_plan(df, customer_name, material, is_taiwan, title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, value_label_fontsize):
     """Plot business plan chart"""
-    if not validate_dataframe(df, REQUIRED_COLUMNS['business_plan'], material=material, chart_type="Business plan"):
+    if not validate_dataframe(df, REQUIRED_COLUMNS['business_plan'], material=material):
         return None
     return drawchat.plot_customer_business_plan(
-        df, customer_name, is_taiwan, title_fontsize, axis_label_fontsize, 
+        df, customer_name, False, title_fontsize, axis_label_fontsize, 
         tick_fontsize, legend_fontsize, value_label_fontsize
     )
 
@@ -380,15 +333,12 @@ def get_price_range(df, chart_type, material, country, customer_name=None, selec
     if df.empty:
         return 0.0, 100.0
     try:
-        df_filtered = df[df['customer'] == customer_name] if customer_name and chart_type != "Customer bubble Chart" and chart_type != "Customer Bubble Chart (Centered)" else df
-        if chart_type == "Customer Bubble Chart (Centered)":
-            price_columns = ['ppd']
-        else:
-            price_columns = (
-                ['pocket price', 'vn_pp', 'apac_pp'] if material == 'TDI' and country == 'Vietnam' else
-                ['pocket price', 'tw_pp', 'apac_pp'] if material == 'TDI' and country == 'Taiwan' else
-                ['pocket price', 'vn_pp', 'seap_pp', 'apac_pp']
-            )
+        df_filtered = df[df['customer'] == customer_name] if customer_name and chart_type != "Customer bubble Chart" else df
+        price_columns = (
+            ['pocket price', 'vn_pp', 'apac_pp'] if material == 'TDI' and country == 'Vietnam' else
+            ['pocket price', 'tw_pp', 'apac_pp'] if material == 'TDI' and country == 'Taiwan' else
+            ['pocket price', 'vn_pp', 'seap_pp', 'apac_pp']
+        )
         if selected_price_columns and chart_type == "Account price vs Volume":
             price_columns = [col for col in selected_price_columns if col in df_filtered.columns and col in price_columns]
         else:
@@ -399,9 +349,6 @@ def get_price_range(df, chart_type, material, country, customer_name=None, selec
         min_price = float(df_filtered[price_columns].min().min())
         max_price = float(df_filtered[price_columns].max().max())
         padding = (max_price - min_price) * 0.1 if max_price > min_price else 10.0
-        if chart_type == "Customer Bubble Chart (Centered)":
-            padding = max(0.005, padding)  # Smaller padding for PPD
-            return min_price - padding, max_price + padding
         return max(0.0, min_price - padding), max_price + padding
     except (ValueError, TypeError) as e:
         st.error(f"Error in get_price_range: {str(e)}")
@@ -413,7 +360,7 @@ def get_demand_range(df, chart_type, customer_name=None):
     if df.empty:
         return 0.0, 100.0
     try:
-        df_filtered = df[df['customer'] == customer_name] if customer_name and chart_type != "Customer bubble Chart" and chart_type != "Customer Bubble Chart (Centered)" else df
+        df_filtered = df[df['customer'] == customer_name] if customer_name and chart_type != "Customer bubble Chart" else df
         if chart_type == "Customer Demand" and 'demand' in df_filtered.columns:
             min_val = float(df_filtered['demand'].min())
             max_val = float(df_filtered['demand'].max())
@@ -424,9 +371,6 @@ def get_demand_range(df, chart_type, customer_name=None):
             total_val = df_filtered[['min', 'base', 'max']].sum(axis=1)
             min_val = float(total_val.min())
             max_val = float(total_val.max())
-        elif chart_type == "Customer Bubble Chart (Centered)" and 'volume' in df_filtered.columns:
-            min_val = float(df_filtered['volume'].min())
-            max_val = float(df_filtered['volume'].max())
         else:
             return 0.0, 100.0
         padding = (max_val - min_val) * 0.1 if max_val > min_val else 10.0
@@ -448,7 +392,7 @@ def reset_axis_ranges(chart_type, customer_name):
     """Reset Y-axis ranges based on chart type and customer change"""
     if (st.session_state.get('previous_chart_type') != chart_type or 
         st.session_state.get('previous_customer') != customer_name):
-        if chart_type == "Customer bubble Chart" or chart_type == "Customer Bubble Chart (Centered)":
+        if chart_type == "Customer bubble Chart":
             st.session_state.chart_settings['bubble_y_min'] = None
             st.session_state.chart_settings['bubble_y_max'] = None
             st.session_state.chart_settings['use_custom_bubble_y_range'] = False
@@ -465,7 +409,7 @@ def reset_axis_ranges(chart_type, customer_name):
             st.session_state.chart_settings['use_custom_y_range'] = False
     st.session_state.previous_chart_type = chart_type
     st.session_state.previous_customer = customer_name
- 
+
 def main():
     """Main application logic"""
     setup_page()
@@ -490,8 +434,7 @@ def main():
             'use_custom_price_volume_y_range': False,
             'use_custom_y_demand_range': False,
             'bubble_year': None,
-            'selected_price_columns': None,
-            'min_volume_threshold': 50
+            'selected_price_columns': None
         }
     
     # Clear cache button
@@ -532,14 +475,10 @@ def main():
         st.sidebar.header("📁 File Upload")
         upload_configs = (
             [
-                ('mdi', 'MDI Customer Data'), 
-                ('mdi_bp', 'MDI Business Plan'),
-                ('tdi', 'TDI Customer Data'), 
-                ('tdi_bp', 'TDI Business Plan'),
-                ('vn_ppd_2024', 'PPD Data')
+                ('mdi', 'MDI Customer Data'), ('mdi_bp', 'MDI Business Plan'),
+                ('tdi', 'TDI Customer Data'), ('tdi_bp', 'TDI Business Plan')
             ] if is_vietnam else [
-                ('tw_tdi', 'TDI Customer Data'), 
-                ('tw_tdi_bp', 'TDI Business Plan')
+                ('tw_tdi', 'TDI Customer Data'), ('tw_tdi_bp', 'TDI Business Plan')
             ]
         )
         
@@ -577,8 +516,7 @@ def main():
                     ('mdi', 'MDI Customer Data', DEFAULT_PATHS['mdi']),
                     ('mdi_bp', 'MDI Business Plan', DEFAULT_PATHS['mdi_bp']),
                     ('tdi', 'TDI Customer Data', DEFAULT_PATHS['tdi']),
-                    ('tdi_bp', 'TDI Business Plan', DEFAULT_PATHS['tdi_bp']),
-                    ('vn_ppd_2024', 'PPD Data', DEFAULT_PATHS['vn_ppd_2024'])
+                    ('tdi_bp', 'TDI Business Plan', DEFAULT_PATHS['tdi_bp'])
                 ] if is_vietnam else [
                     ('tw_tdi', 'TDI Customer Data', DEFAULT_PATHS['tw_tdi']),
                     ('tw_tdi_bp', 'TDI Business Plan', DEFAULT_PATHS['tw_tdi_bp'])
@@ -606,10 +544,9 @@ def main():
                 if st.button("Save Changes", key=f"save_{selected_file_key}"):
                     required_cols = (
                         REQUIRED_COLUMNS['business_plan'] if 'bp' in selected_file_key else
-                        REQUIRED_COLUMNS['bubble_centered'] if selected_file_key == 'vn_ppd_2024' else
                         REQUIRED_COLUMNS['price_charts']
                     )
-                    if validate_dataframe(edited_df, required_cols, material=material, country=country, chart_type=chart_type):
+                    if validate_dataframe(edited_df, required_cols, material=material, country=country):
                         if save_csv(edited_df, selected_file_path):
                             st.rerun()
                     else:
@@ -622,7 +559,7 @@ def main():
     df = get_dataframe(chart_type, material, data_dict)
     customer_name = None
     with col1:
-        if chart_type not in ["Customer bubble Chart", "Customer Bubble Chart (Centered)"] and not df.empty and 'customer' in df.columns:
+        if chart_type != "Customer bubble Chart" and not df.empty and 'customer' in df.columns:
             customers = sorted(df['customer'].unique())
             with st.container():
                 st.markdown(
@@ -651,7 +588,7 @@ def main():
         - Material: {material}
         - Chart: {chart_type}
         - Customer: {customer_name if customer_name else 'Not applicable'}
-        - Year: {st.session_state.chart_settings['bubble_year'] if chart_type in ["Customer bubble Chart", "Customer Bubble Chart (Centered)"] and st.session_state.chart_settings['bubble_year'] is not None else 'Not applicable'}
+        - Year: {st.session_state.chart_settings['bubble_year'] if chart_type == "Customer bubble Chart" and st.session_state.chart_settings['bubble_year'] is not None else 'Not applicable'}
         - Data Source: {st.session_state.get('data_source_select')}
         - Editor: {editor_visibility}
         """)
@@ -678,8 +615,7 @@ def main():
                     'use_custom_price_volume_y_range': False,
                     'use_custom_y_demand_range': False,
                     'bubble_year': None,
-                    'selected_price_columns': None,
-                    'min_volume_threshold': 50
+                    'selected_price_columns': ['pocket price']
                 }
                 st.success("Chart settings reset to default!")
             
@@ -702,11 +638,11 @@ def main():
                     key="demand_label_font_size"
                 )
             
-            if chart_type in ["Customer bubble Chart", "Customer Bubble Chart (Centered)"]:
+            if chart_type == "Customer bubble Chart":
                 with st.expander("🔵 Bubble Chart Specific Settings"):
                     st.session_state.chart_settings['bubble_scale'] = st.slider(
                         "Bubble Size Scale", 
-                        min_value=1.0, 
+                        min_value=0.1, 
                         max_value=50.0,
                         value=st.session_state.chart_settings['bubble_scale'],
                         step=0.1,
@@ -721,16 +657,6 @@ def main():
                         step=0.1,
                         key="bubble_alpha"
                     )
-                    
-                    if chart_type == "Customer Bubble Chart (Centered)":
-                        st.session_state.chart_settings['min_volume_threshold'] = st.slider(
-                            "Minimum Volume Threshold",
-                            min_value=0,
-                            max_value=1000,
-                            value=st.session_state.chart_settings['min_volume_threshold'],
-                            step=10,
-                            key="min_volume_threshold"
-                        )
                     
                     if st.session_state.chart_settings['bubble_scale'] > 10.0:
                         st.warning("⚠️ Large bubble sizes may cause overlap. Consider reducing scale.")
@@ -755,7 +681,7 @@ def main():
                         key="price_columns_select"
                     )
             
-            if chart_type in ["Customer bubble Chart", "Customer Bubble Chart (Centered)"]:
+            if chart_type == "Customer bubble Chart":
                 with st.expander("📏 Bubble Chart Y-Axis Range Control (Price Axis, $/kg)"):
                     st.session_state.chart_settings['use_custom_bubble_y_range'] = st.checkbox(
                         "Custom Bubble Chart Y-axis Range",
@@ -764,8 +690,8 @@ def main():
                     )
                     if st.session_state.chart_settings['use_custom_bubble_y_range']:
                         range_min, range_max = get_price_range(df, chart_type, material, country, customer_name)
-                        slider_step = 0.01 if chart_type == "Customer Bubble Chart (Centered)" else 0.1
-                        format_str = ".2f" if chart_type == "Customer Bubble Chart (Centered)" else ".1f"
+                        slider_step = 0.1
+                        format_str = ".1f"
                         
                         if st.session_state.chart_settings['bubble_y_min'] is None:
                             st.session_state.chart_settings['bubble_y_min'] = float(range_min)
@@ -774,7 +700,7 @@ def main():
                         
                         st.session_state.chart_settings['bubble_y_min'] = st.slider(
                             "Bubble Chart Y-axis Minimum",
-                            min_value=-1.0 if chart_type == "Customer Bubble Chart (Centered)" else 0.0,
+                            min_value=0.0,
                             max_value=float(range_max),
                             value=st.session_state.chart_settings['bubble_y_min'],
                             step=slider_step,
@@ -797,10 +723,10 @@ def main():
                             st.session_state.chart_settings['bubble_y_min'] = None
                             st.session_state.chart_settings['bubble_y_max'] = None
                         else:
-                            st.info(f"Custom Bubble Chart Y-axis range: {st.session_state.chart_settings['bubble_y_min']:.2f} - {st.session_state.chart_settings['bubble_y_max']:.2f}")
+                            st.info(f"Custom Bubble Chart Y-axis range: {st.session_state.chart_settings['bubble_y_min']:.1f} - {st.session_state.chart_settings['bubble_y_max']:.1f}")
                     else:
                         range_min, range_max = get_price_range(df, chart_type, material, country, customer_name)
-                        st.info(f"Auto Bubble Chart Y-axis range: {range_min:.2f} - {range_max:.2f}")
+                        st.info(f"Auto Bubble Chart Y-axis range: {range_min:.1f} - {range_max:.1f}")
                         st.session_state.chart_settings['bubble_y_min'] = None
                         st.session_state.chart_settings['bubble_y_max'] = None
             
@@ -953,7 +879,7 @@ def main():
     with col1:
         st.subheader(f"{chart_type} Visualization")
         
-        if not df.empty and (chart_type in ["Customer bubble Chart", "Customer Bubble Chart (Centered)"] or 'customer' in df.columns):
+        if not df.empty and (chart_type == "Customer bubble Chart" or 'customer' in df.columns):
             chart_config = get_chart_config(
                 chart_type,
                 st.session_state.chart_settings['customer_name_font_size'],
@@ -971,7 +897,7 @@ def main():
             )
             
             year_filter = None
-            if chart_type in ["Customer bubble Chart", "Customer Bubble Chart (Centered)"] and 'year' in df.columns:
+            if chart_type == "Customer bubble Chart" and 'year' in df.columns:
                 available_years = sorted(df['year'].unique())
                 if available_years:
                     if st.session_state.chart_settings['bubble_year'] not in available_years:
@@ -1019,17 +945,6 @@ def main():
                             chart_config['y_min'], chart_config['y_max'],
                             year_filter
                         )
-                    elif chart_type == "Customer Bubble Chart (Centered)":
-                        chart_figure = plot_bubble_chart_centered(
-                            df, material,
-                            chart_config['title_fontsize'], chart_config['axis_label_fontsize'],
-                            chart_config['tick_fontsize'], chart_config['legend_fontsize'],
-                            chart_config['bubble_scale'], chart_config['alpha'],
-                            chart_config['customer_name_font_size'], chart_config['demand_label_font_size'],
-                            chart_config['y_min'], chart_config['y_max'],
-                            year_filter,
-                            chart_config['min_volume_threshold']
-                        )
                     elif chart_type == "Business plan":
                         chart_figure = plot_business_plan(
                             df, customer_name, material, not is_vietnam,
@@ -1039,8 +954,11 @@ def main():
                         )
                      
                     if chart_figure:
-                        st.plotly_chart(chart_figure, use_container_width=True)
-                        st.success("Chart generated successfully! 🎉")
+                         if chart_type == "Customer bubble Chart":
+                             st.plotly_chart(chart_figure, use_container_width=True)
+                         else:
+                                st.pyplot(chart_figure)
+                         st.success("Chart generated successfully! 🎉")
                     else:
                         st.error("Failed to generate chart due to invalid data or settings.")
         else:
