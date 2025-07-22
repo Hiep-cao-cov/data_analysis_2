@@ -4,7 +4,7 @@ import streamlit as st
 import numpy as np
 import plotly.graph_objects as go
 import drawchat
-
+ 
 # Constants
 REQUIRED_COLUMNS = {
     'demand_charts': ['customer', 'demand'],
@@ -19,8 +19,8 @@ DEFAULT_PATHS = {
     'tdi': 'data/VN_TDI_final.csv',
     'tdi_bp': 'data/VN_TDI_BP_23_27.csv',
     'tw_tdi': 'data/TW_TDI_final.csv',
-    'tw_tdi_bp': 'data/TW_TDI_BP_23_27.csv',
-    'vn_ppd_2024': 'data/VN_PPD_2024.csv'
+    'tw_tdi_bp':'data/TW_TDI_BP_23_27.csv',
+    'vn_ppd_2024':'data/VN_PPD.csv'
 } 
 
 SUPPLIERS = {
