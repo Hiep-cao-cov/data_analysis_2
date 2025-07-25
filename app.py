@@ -203,7 +203,7 @@ def get_chart_config(chart_type, customer_name_font_size, demand_label_font_size
             'tick_fontsize': 20,
             'legend_fontsize': 18,
             'legend_title_fontsize': 18,
-            'value_label_fontsize': 18,
+            'value_label_fontsize': 25,
             'customer_name_font_size': customer_name_font_size,
             'demand_label_font_size': demand_label_font_size,
             'y_min': y_min,
@@ -492,7 +492,7 @@ def main():
             'bubble_year': None,
             'selected_price_columns': None,
             'min_volume_threshold': 50
-        }
+        }  
     
     # Clear cache button
     if st.button("Clear Cache and Reload"):
