@@ -3,28 +3,15 @@ import streamlit as st
 import plotly.graph_objects as go
 import drawchat
 import io
-from EDA import load_and_extract_dataframes
+import os
+from eda import load_and_extract_dataframes
+from config import REQUIRED_COLUMNS, SUPPLIERS, CHART_TYPES, COUNTRIES, MATERIALS
 
-# Constants
-REQUIRED_COLUMNS = {
-    'demand_charts': ['customer', 'demand'],
-    'price_charts': ['customer', 'demand', 'pocket price'],
-    'business_plan': ['customer', 'year', 'min', 'base', 'max'],
-    'bubble_centered': ['customer', 'year', 'sow', 'ppd', 'volume']
-}
-
-SUPPLIERS = {
-    'pmdi': ['covestro', 'tosoh', 'wanhua', 'kmc', 'basf', 'sabic', 'huntsman', 'other'],
-    'tdi': ['covestro', 'mcns', 'wanhua', 'basf', 'hanwha', 'sabic', 'other'],
-    'covestro': ['covestro']
-}
-
-CHART_TYPES = ["Customer Demand", "Account price vs Volume", "Business plan", "Customer bubble Chart", "Customer Bubble Chart (Centered)"]
-COUNTRIES = ["Vietnam", "Taiwan"]
-MATERIALS = ["PMDI", "TDI"]
-
-def validate_dataframe(df, required_columns, material=None, country=None, chart_type=None):
+def validate_dataframe(df, required_columns, material=None, country=None, chart_type=None, files_uploaded=False):
     """Validate DataFrame has required columns, data types, and valid ranges"""
+    if not files_uploaded:
+        return False  # Silently return False if no files are uploaded
+    
     if df.empty:
         st.error("DataFrame is empty")
         return False
@@ -85,27 +72,32 @@ def validate_dataframe(df, required_columns, material=None, country=None, chart_
 @st.cache_data
 def load_country_data(dataframes, country, material, chart_type):
     """Load data into data_dict from provided DataFrames"""
+    files_uploaded = any(st.session_state.uploaded_files.values())
     data_dict = {}
     
     if country == "Vietnam":
         if material == "PMDI":
-            data_dict['mdi'] = dataframes.get('df_mdi', pd.DataFrame()) if validate_dataframe(dataframes.get('df_mdi', pd.DataFrame()), REQUIRED_COLUMNS['price_charts'], material=material, country=country) else pd.DataFrame()
-            data_dict['mdi_bp'] = dataframes.get('df_mdi_bp', pd.DataFrame()) if validate_dataframe(dataframes.get('df_mdi_bp', pd.DataFrame()), REQUIRED_COLUMNS['business_plan'], material=material, country=country) else pd.DataFrame()
-            data_dict['vn_ppd_2024'] = dataframes.get('df_ppd', pd.DataFrame()) if validate_dataframe(dataframes.get('df_ppd', pd.DataFrame()), REQUIRED_COLUMNS['bubble_centered'], chart_type="Customer Bubble Chart (Centered)") else pd.DataFrame()
+            data_dict['mdi'] = dataframes.get('df_mdi', pd.DataFrame()) if validate_dataframe(dataframes.get('df_mdi', pd.DataFrame()), REQUIRED_COLUMNS['price_charts'], material=material, country=country, files_uploaded=files_uploaded) else pd.DataFrame()
+            data_dict['mdi_bp'] = dataframes.get('df_mdi_bp', pd.DataFrame()) if validate_dataframe(dataframes.get('df_mdi_bp', pd.DataFrame()), REQUIRED_COLUMNS['business_plan'], material=material, country=country, files_uploaded=files_uploaded) else pd.DataFrame()
+            data_dict['vn_ppd_2024'] = dataframes.get('df_ppd', pd.DataFrame()) if validate_dataframe(dataframes.get('df_ppd', pd.DataFrame()), REQUIRED_COLUMNS['bubble_centered'], chart_type="Customer Bubble Chart (Centered)", files_uploaded=files_uploaded) else pd.DataFrame()
         else:
-            data_dict['tdi'] = dataframes.get('df_tdi', pd.DataFrame()) if validate_dataframe(dataframes.get('df_tdi', pd.DataFrame()), REQUIRED_COLUMNS['price_charts'], material=material, country=country) else pd.DataFrame()
-            data_dict['tdi_bp'] = dataframes.get('df_tdi_bp', pd.DataFrame()) if validate_dataframe(dataframes.get('df_tdi_bp', pd.DataFrame()), REQUIRED_COLUMNS['business_plan'], material=material, country=country) else pd.DataFrame()
-            data_dict['vn_ppd_2024'] = dataframes.get('df_ppd', pd.DataFrame()) if validate_dataframe(dataframes.get('df_ppd', pd.DataFrame()), REQUIRED_COLUMNS['bubble_centered'], chart_type="Customer Bubble Chart (Centered)") else pd.DataFrame()
-    else:  # Taiwan, only TDI
-        data_dict['tw_tdi'] = dataframes.get('df_tdi', pd.DataFrame()) if validate_dataframe(dataframes.get('df_tdi', pd.DataFrame()), REQUIRED_COLUMNS['price_charts'], material=material, country=country) else pd.DataFrame()
-        data_dict['tw_tdi_bp'] = dataframes.get('df_tdi_bp', pd.DataFrame()) if validate_dataframe(dataframes.get('df_tdi_bp', pd.DataFrame()), REQUIRED_COLUMNS['business_plan'], material=material, country=country) else pd.DataFrame()
-        data_dict['tw_ppd_2024'] = dataframes.get('df_ppd', pd.DataFrame()) if validate_dataframe(dataframes.get('df_ppd', pd.DataFrame()), REQUIRED_COLUMNS['bubble_centered'], chart_type="Customer Bubble Chart (Centered)") else pd.DataFrame()
+            data_dict['tdi'] = dataframes.get('df_tdi', pd.DataFrame()) if validate_dataframe(dataframes.get('df_tdi', pd.DataFrame()), REQUIRED_COLUMNS['price_charts'], material=material, country=country, files_uploaded=files_uploaded) else pd.DataFrame()
+            data_dict['tdi_bp'] = dataframes.get('df_tdi_bp', pd.DataFrame()) if validate_dataframe(dataframes.get('df_tdi_bp', pd.DataFrame()), REQUIRED_COLUMNS['business_plan'], material=material, country=country, files_uploaded=files_uploaded) else pd.DataFrame()
+            data_dict['vn_ppd_2024'] = dataframes.get('df_ppd', pd.DataFrame()) if validate_dataframe(dataframes.get('df_ppd', pd.DataFrame()), REQUIRED_COLUMNS['bubble_centered'], chart_type="Customer Bubble Chart (Centered)", files_uploaded=files_uploaded) else pd.DataFrame()
+    else:  # Taiwan
+        data_dict['tw_tdi'] = dataframes.get('df_tdi', pd.DataFrame()) if validate_dataframe(dataframes.get('df_tdi', pd.DataFrame()), REQUIRED_COLUMNS['price_charts'], material=material, country=country, files_uploaded=files_uploaded) else pd.DataFrame()
+        data_dict['tw_tdi_bp'] = dataframes.get('df_tdi_bp', pd.DataFrame()) if validate_dataframe(dataframes.get('df_tdi_bp', pd.DataFrame()), REQUIRED_COLUMNS['business_plan'], material=material, country=country, files_uploaded=files_uploaded) else pd.DataFrame()
+        data_dict['tw_ppd_2024'] = dataframes.get('df_ppd', pd.DataFrame()) if validate_dataframe(dataframes.get('df_ppd', pd.DataFrame()), REQUIRED_COLUMNS['bubble_centered'], chart_type="Customer Bubble Chart (Centered)", files_uploaded=files_uploaded) else pd.DataFrame()
     
     return data_dict
 
 @st.cache_data
 def get_dataframe(chart_type, material, data_dict, country):
     """Select appropriate dataframe based on chart type, material, and country"""
+    files_uploaded = any(st.session_state.uploaded_files.values())
+    if not files_uploaded:
+        return pd.DataFrame()  # Silently return empty DataFrame if no files uploaded
+    
     if chart_type == "Customer Bubble Chart (Centered)":
         key = 'vn_ppd_2024' if country == "Vietnam" else 'tw_ppd_2024'
     elif material == "PMDI" and chart_type == "Business plan":
@@ -128,7 +120,7 @@ def get_price_range(df, chart_type, material, country, customer_name=None, selec
     if df.empty:
         return 0.0, 100.0
     try:
-        df_filtered = df[df['customer'] == customer_name] if customer_name and chart_type != "Customer bubble Chart" and chart_type != "Customer Bubble Chart (Centered)" else df
+        df_filtered = df[df['customer'] == customer_name] if customer_name and chart_type not in ["Customer bubble Chart", "Customer Bubble Chart (Centered)"] else df
         if chart_type == "Customer Bubble Chart (Centered)":
             price_columns = ['ppd']
         else:
@@ -161,7 +153,7 @@ def get_demand_range(df, chart_type, customer_name=None):
     if df.empty:
         return 0.0, 100.0
     try:
-        df_filtered = df[df['customer'] == customer_name] if customer_name and chart_type != "Customer bubble Chart" and chart_type != "Customer Bubble Chart (Centered)" else df
+        df_filtered = df[df['customer'] == customer_name] if customer_name and chart_type not in ["Customer bubble Chart", "Customer Bubble Chart (Centered)"] else df
         if chart_type == "Customer Demand" and 'demand' in df_filtered.columns:
             min_val = float(df_filtered['demand'].min())
             max_val = float(df_filtered['demand'].max())
@@ -183,9 +175,9 @@ def get_demand_range(df, chart_type, customer_name=None):
         st.error(f"Error in get_demand_range: {str(e)}")
         return 0.0, 100.0
 
-def plot_customer_demand(df, customer_name, material, is_taiwan, title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, legend_title_fontsize, value_label_fontsize, customer_name_font_size, demand_label_font_size, y_min, y_max):
-    """Plot customer demand chart"""
-    if not validate_dataframe(df, REQUIRED_COLUMNS['demand_charts'], material=material, chart_type="Customer Demand"):
+def plot_customer_demand(df, customer_name, material, is_taiwan, title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, legend_title_fontsize, percentage_label_fontsize, customer_name_font_size, demand_label_font_size, y_min, y_max):
+    """Plot customer demand chart with legend at bottom"""
+    if not validate_dataframe(df, REQUIRED_COLUMNS['demand_charts'], material=material, chart_type="Customer Demand", files_uploaded=True):
         return None
     suppliers = SUPPLIERS[material.lower()]
     available_suppliers = [col for col in suppliers if col in df.columns]
@@ -194,16 +186,32 @@ def plot_customer_demand(df, customer_name, material, is_taiwan, title_fontsize,
         return None
     df_filtered = df[df['customer'] == customer_name]
     max_demand = df_filtered['demand'].max() if not df_filtered.empty else 0
-    return drawchat.plot_customer_demand(
-        df, customer_name, 'customer', available_suppliers, 'year', (0, max_demand * 1.4),
-        title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, 
-        legend_title_fontsize, value_label_fontsize, customer_name_font_size, 
-        demand_label_font_size, y_min, y_max
-    )
+    try:
+        fig = drawchat.plot_customer_demand(
+            df, customer_name, 'customer', available_suppliers, 'year', (0, max_demand * 1.4),
+            title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, 
+            legend_title_fontsize, percentage_label_fontsize, customer_name_font_size, 
+            demand_label_font_size, y_min, y_max
+        )
+        if fig:
+            fig.update_layout(
+                legend=dict(
+                    orientation="h",
+                    yanchor="top",
+                    y=-0.2,
+                    xanchor="center",
+                    x=0.5,
+                    font=dict(size=legend_fontsize)
+                )
+            )
+        return fig
+    except Exception as e:
+        st.error(f"Error generating Customer Demand chart: {str(e)}")
+        return None
 
-def plot_price_volume(df, customer_name, material, is_taiwan, title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, legend_title_fontsize, price_annotation_fontsize, annotation_spacing, value_label_fontsize, customer_name_font_size, demand_label_font_size, y_min, y_max, y_demand_min, y_demand_max, selected_price_columns):
-    """Plot price vs volume chart with selected price columns"""
-    if not validate_dataframe(df, REQUIRED_COLUMNS['price_charts'], material=material, chart_type="Account price vs Volume"):
+def plot_price_volume(df, customer_name, material, is_taiwan, title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, legend_title_fontsize, percentage_label_fontsize, customer_name_font_size, demand_label_font_size, y_min, y_max, y_demand_min, y_demand_max, selected_price_columns, price_annotation_fontsize, annotation_spacing):
+    """Plot price vs volume chart with selected price columns and legend at bottom"""
+    if not validate_dataframe(df, REQUIRED_COLUMNS['price_charts'], material=material, chart_type="Account price vs Volume", files_uploaded=True):
         return None
     df_filtered = df[df['customer'] == customer_name]
     max_demand = df_filtered['demand'].max() if not df_filtered.empty else 0
@@ -225,25 +233,50 @@ def plot_price_volume(df, customer_name, material, is_taiwan, title_fontsize, ax
         return None
     color_map = dict(zip(all_price_columns, price_colors))
     selected_colors = [color_map[col] for col in price_columns]
-    return drawchat.plot_customer_demand_with_price(
-        df, customer_name, 'customer', SUPPLIERS['covestro'], 'year',
-        (0, max_demand * 2), (0.5, max_price * 1.5), price_columns, selected_colors,
-        title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, 
-        legend_title_fontsize, value_label_fontsize, price_annotation_fontsize, 
-        annotation_spacing, customer_name_font_size, demand_label_font_size, 
-        y_min, y_max, y_demand_min, y_demand_max
-    )
+    try:
+        fig = drawchat.plot_customer_demand_with_price(
+            df, customer_name, 'customer', SUPPLIERS[material.lower()], 'year',
+            (0, max_demand * 2), (0.5, max_price * 1.5), price_columns, selected_colors,
+            title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, 
+            legend_title_fontsize, percentage_label_fontsize, price_annotation_fontsize, 
+            annotation_spacing, customer_name_font_size, demand_label_font_size, 
+            y_min, y_max, y_demand_min, y_demand_max
+        )
+        if fig:
+            fig.update_layout(
+                legend=dict(
+                    orientation="h",
+                    yanchor="top",
+                    y=-0.2,
+                    xanchor="center",
+                    x=0.5,
+                    font=dict(size=legend_fontsize)
+                )
+            )
+        return fig
+    except Exception as e:
+        st.error(f"Error generating Account price vs Volume chart: {str(e)}")
+        return None
 
 def plot_bubble_chart(df, customer_name, material, is_taiwan, title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, bubble_scale, alpha, customer_name_font_size, demand_label_font_size, y_min, y_max, year_filter):
-    """Plot bubble chart with fixed size"""
-    if not validate_dataframe(df, REQUIRED_COLUMNS['price_charts'], material=material, chart_type="Customer bubble Chart"):
+    """Plot bubble chart with fixed size and legend at bottom"""
+    if not validate_dataframe(df, REQUIRED_COLUMNS['price_charts'], material=material, chart_type="Customer bubble Chart", files_uploaded=True):
         return None
     if 'year' not in df.columns and year_filter is not None:
         st.warning("Year column not found. Ignoring year filter.")
         year_filter = None
+    if year_filter is not None and 'year' in df.columns and not df[df['year'] == year_filter].empty:
+        df_filtered = df[df['year'] == year_filter]
+    else:
+        if year_filter is not None and 'year' in df.columns:
+            st.warning(f"No data available for year {year_filter}. Defaulting to first available year.")
+            years = sorted(df['year'].unique())
+            year_filter = years[0] if years else None
+            st.session_state.chart_settings['bubble_year'] = year_filter
+        df_filtered = df
     settings_info = f"📊 Bubble Scale: {bubble_scale:.1f} | Transparency: {alpha:.1f} | "
     settings_info += f"Customer Name Font Size: {customer_name_font_size} | "
-    settings_info += f"Demand Label Font Size: {demand_label_font_size}"
+    settings_info += f"Volume Label Font Size: {demand_label_font_size}"
     if y_min is not None and y_max is not None:
         settings_info += f" | Y-axis: {y_min:.1f} - {y_max:.1f}"
     if year_filter is not None:
@@ -251,22 +284,42 @@ def plot_bubble_chart(df, customer_name, material, is_taiwan, title_fontsize, ax
     st.info(settings_info)
     try:
         chart_figure, _, _, _ = drawchat.plot_customer_bubble_clean_with_median(
-            df, 'customer', 'covestro', 'pocket price', year_filter, bubble_scale, alpha,
+            df_filtered, 'customer', 'covestro', 'pocket price', year_filter, bubble_scale, alpha,
             title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize,
             customer_name_font_size, demand_label_font_size, y_min, y_max
         )
+        if chart_figure:
+            chart_figure.update_layout(
+                legend=dict(
+                    orientation="h",
+                    yanchor="top",
+                    y=-0.2,
+                    xanchor="center",
+                    x=0.5,
+                    font=dict(size=legend_fontsize)
+                )
+            )
         return chart_figure
     except ValueError as e:
         st.error(f"Error generating bubble chart: {str(e)}")
         return None
 
-def plot_bubble_chart_centered(df, material, title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, bubble_scale, alpha, customer_name_font_size, demand_label_font_size, y_min, y_max, year_filter, min_volume_threshold=50):
-    """Plot centered bubble chart with SOW and PPD axes"""
-    if not validate_dataframe(df, REQUIRED_COLUMNS['bubble_centered'], chart_type="Customer Bubble Chart (Centered)"):
+def plot_bubble_chart_centered(df, material, title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, bubble_scale, alpha, customer_name_font_size, demand_label_font_size, y_min, y_max, year_filter, min_volume_threshold):
+    """Plot centered bubble chart with SOW and PPD axes and legend at bottom"""
+    if not validate_dataframe(df, REQUIRED_COLUMNS['bubble_centered'], chart_type="Customer Bubble Chart (Centered)", files_uploaded=True):
         return None
     if 'year' not in df.columns and year_filter is not None:
         st.warning("Year column not found. Ignoring year filter.")
         year_filter = None
+    if year_filter is not None and 'year' in df.columns and not df[df['year'] == year_filter].empty:
+        df_filtered = df[df['year'] == year_filter]
+    else:
+        if year_filter is not None and 'year' in df.columns:
+            st.warning(f"No data available for year {year_filter}. Defaulting to first available year.")
+            years = sorted(df['year'].unique())
+            year_filter = years[0] if years else None
+            st.session_state.chart_settings['bubble_year'] = year_filter
+        df_filtered = df
     settings_info = f"📊 Bubble Scale: {bubble_scale:.1f} | Transparency: {alpha:.1f} | "
     settings_info += f"Customer Name Font Size: {customer_name_font_size} | "
     settings_info += f"Volume Label Font Size: {demand_label_font_size} | "
@@ -278,23 +331,38 @@ def plot_bubble_chart_centered(df, material, title_fontsize, axis_label_fontsize
     st.info(settings_info)
     try:
         chart_figure = drawchat.plot_customer_bubble_centered(
-            df, 'customer', 'sow', 'ppd', 'volume', year_filter, bubble_scale, alpha,
+            df_filtered, 'customer', 'sow', 'ppd', 'volume', year_filter, bubble_scale, alpha,
             title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize,
             customer_name_font_size, demand_label_font_size, min_volume_threshold, y_min, y_max
         )
+        if chart_figure:
+            chart_figure.update_layout(
+                legend=dict(
+                    orientation="h",
+                    yanchor="top",
+                    y=-0.2,
+                    xanchor="center",
+                    x=0.5,
+                    font=dict(size=legend_fontsize)
+                )
+            )
         return chart_figure
     except ValueError as e:
         st.error(f"Error generating centered bubble chart: {str(e)}")
         return None
 
-def plot_business_plan(df, customer_name, material, is_taiwan, title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, value_label_fontsize):
+def plot_business_plan(df, customer_name, material, is_taiwan, title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, percentage_label_fontsize):
     """Plot business plan chart"""
-    if not validate_dataframe(df, REQUIRED_COLUMNS['business_plan'], material=material, chart_type="Business plan"):
+    if not validate_dataframe(df, REQUIRED_COLUMNS['business_plan'], material=material, chart_type="Business plan", files_uploaded=True):
         return None
-    return drawchat.plot_customer_business_plan(
-        df, customer_name, is_taiwan, title_fontsize, axis_label_fontsize, 
-        tick_fontsize, legend_fontsize, value_label_fontsize
-    )
+    try:
+        return drawchat.plot_customer_business_plan(
+            df, customer_name, is_taiwan, title_fontsize, axis_label_fontsize, 
+            tick_fontsize, legend_fontsize, percentage_label_fontsize
+        )
+    except Exception as e:
+        st.error(f"Error generating Business plan chart: {str(e)}")
+        return None
 
 def setup_page():
     """Setup Streamlit page configuration"""
@@ -306,69 +374,103 @@ def setup_page():
     st.sidebar.title("🎯 Navigation")
 
 def reset_axis_ranges(chart_type, customer_name):
-    """Reset Y-axis ranges based on chart type and customer change"""
+    """Reset all chart settings based on chart type and customer change"""
     if (st.session_state.get('previous_chart_type') != chart_type or 
         st.session_state.get('previous_customer') != customer_name):
-        if chart_type == "Customer bubble Chart" or chart_type == "Customer Bubble Chart (Centered)":
-            st.session_state.chart_settings['bubble_y_min'] = None
-            st.session_state.chart_settings['bubble_y_max'] = None
-            st.session_state.chart_settings['use_custom_bubble_y_range'] = False
-        elif chart_type == "Account price vs Volume":
-            st.session_state.chart_settings['price_volume_y_min'] = None
-            st.session_state.chart_settings['price_volume_y_max'] = None
-            st.session_state.chart_settings['use_custom_price_volume_y_range'] = False
-            st.session_state.chart_settings['y_demand_min'] = None
-            st.session_state.chart_settings['y_demand_max'] = None
-            st.session_state.chart_settings['use_custom_y_demand_range'] = False
-        elif chart_type == "Customer Demand":
-            st.session_state.chart_settings['y_min'] = None
-            st.session_state.chart_settings['y_max'] = None
-            st.session_state.chart_settings['use_custom_y_range'] = False
+        # Reset all chart settings to defaults
+        st.session_state.chart_settings.update({
+            'customer_name_font_size': 12,
+            'demand_label_font_size': 14,
+            'legend_font_size': 12,
+            'y_min': None,
+            'y_max': None,
+            'bubble_y_min': None,
+            'bubble_y_max': None,
+            'price_volume_y_min': None,
+            'price_volume_y_max': None,
+            'y_demand_min': None,
+            'y_demand_max': None,
+            'bubble_scale': 5.0,
+            'bubble_alpha': 0.7,
+            'use_custom_y_range': False,
+            'use_custom_bubble_y_range': False,
+            'use_custom_price_volume_y_range': False,
+            'use_custom_y_demand_range': False,
+            'min_volume_threshold': 50
+        })
     st.session_state.previous_chart_type = chart_type
     st.session_state.previous_customer = customer_name
 
-def get_chart_config(chart_type, customer_name_font_size, demand_label_font_size, y_min, y_max, bubble_y_min, bubble_y_max, bubble_scale, bubble_alpha, price_volume_y_min, price_volume_y_max, y_demand_min, y_demand_max):
-    """Return chart configuration dictionary"""
-    config = {
+def get_chart_config(chart_type, customer_name_font_size, demand_label_font_size, legend_font_size, y_min, y_max, bubble_y_min, bubble_y_max, bubble_scale, bubble_alpha, price_volume_y_min, price_volume_y_max, y_demand_min, y_demand_max):
+    """Return chart configuration dictionary tailored to chart type"""
+    base_config = {
         'title_fontsize': 20,
         'axis_label_fontsize': 16,
         'tick_fontsize': 12,
-        'legend_fontsize': 12,
-        'legend_title_fontsize': 14,
-        'value_label_fontsize': 12,
-        'price_annotation_fontsize': 12,
-        'annotation_spacing': 0.1,
-        'customer_name_font_size': customer_name_font_size,
-        'demand_label_font_size': demand_label_font_size,
-        'bubble_scale': bubble_scale,
-        'alpha': bubble_alpha,
-        'min_volume_threshold': 50
+        'legend_fontsize': legend_font_size,
     }
-    if chart_type == "Customer bubble Chart" or chart_type == "Customer Bubble Chart (Centered)":
-        config['y_min'] = bubble_y_min
-        config['y_max'] = bubble_y_max
+    
+    if chart_type == "Customer bubble Chart":
+        base_config.update({
+            'bubble_scale': bubble_scale,
+            'alpha': bubble_alpha,
+            'y_min': bubble_y_min,
+            'y_max': bubble_y_max,
+            'customer_name_font_size': customer_name_font_size,
+            'demand_label_font_size': demand_label_font_size,
+        })
+    elif chart_type == "Customer Bubble Chart (Centered)":
+        base_config.update({
+            'bubble_scale': bubble_scale,
+            'alpha': bubble_alpha,
+            'y_min': bubble_y_min,
+            'y_max': bubble_y_max,
+            'customer_name_font_size': customer_name_font_size,
+            'demand_label_font_size': demand_label_font_size,
+            'min_volume_threshold': 50
+        })
     elif chart_type == "Account price vs Volume":
-        config['y_min'] = price_volume_y_min
-        config['y_max'] = price_volume_y_max
-        config['y_demand_min'] = y_demand_min
-        config['y_demand_max'] = y_demand_max
-    else:
-        config['y_min'] = y_min
-        config['y_max'] = y_max
-    return config
+        base_config.update({
+            'y_min': price_volume_y_min,
+            'y_max': price_volume_y_max,
+            'y_demand_min': y_demand_min,
+            'y_demand_max': y_demand_max,
+            'price_annotation_fontsize': 12,
+            'annotation_spacing': 0.1,
+            'legend_title_fontsize': 14,
+            'percentage_label_fontsize': 12,
+            'customer_name_font_size': customer_name_font_size,
+            'demand_label_font_size': demand_label_font_size,
+        })
+    elif chart_type == "Customer Demand":
+        base_config.update({
+            'y_min': y_min,
+            'y_max': y_max,
+            'legend_title_fontsize': 14,
+            'percentage_label_fontsize': 12,
+            'customer_name_font_size': customer_name_font_size,
+            'demand_label_font_size': demand_label_font_size,
+        })
+    else:  # Business plan
+        base_config.update({
+            'percentage_label_fontsize': 12,
+        })
+    
+    return base_config
 
-def main_app(dataframes, country, material):
+def main_app(dataframes, country, material, show_upload_section):
     """Main application logic with DataFrames for the selected country and material"""
     setup_page()
     
     # Initialize session state for DataFrames and chart settings
     if 'dataframes' not in st.session_state:
-        st.session_state.dataframes = {k: v.copy() for k, v in dataframes.items()}
+        st.session_state.dataframes = {k: v.copy() for k, v in dataframes.items() if not v.empty}
     
     if 'chart_settings' not in st.session_state:
         st.session_state.chart_settings = {
             'customer_name_font_size': 12,
             'demand_label_font_size': 14,
+            'legend_font_size': 12,
             'y_min': None,
             'y_max': None,
             'bubble_y_min': None,
@@ -385,38 +487,51 @@ def main_app(dataframes, country, material):
             'use_custom_y_demand_range': False,
             'bubble_year': None,
             'selected_price_columns': None,
-            'min_volume_threshold': 50
+            'min_volume_threshold': 50,
+            'auto_generate_chart': False
         }
     
-    # Clear cache and reset DataFrames button
-    col_reset, col_clear = st.columns([1, 1])
-    with col_reset:
-        if st.button("Reset DataFrames to Original"):
-            st.session_state.dataframes = {k: v.copy() for k, v in dataframes.items()}
-            st.success("DataFrames reset to original values!")
-    with col_clear:
-        if st.button("Clear Cache and Reload"):
-            load_country_data.clear()
-            get_dataframe.clear()
-            get_price_range.clear()
-            get_demand_range.clear()
-            st.rerun()
+    # Clear cache button
+    if st.button("Clear Cache and Reload"):
+        load_country_data.clear()
+        get_dataframe.clear()
+        get_price_range.clear()
+        get_demand_range.clear()
+        st.rerun()
     
     st.title(f"📊 {material} Market Visualization Dashboard - {country}")
     st.markdown("---")
     
     # DataFrame editing section
-    with st.expander("📝 Edit DataFrames", expanded=False):
-        st.subheader("Modify DataFrames")
-        tabs = st.tabs(list(dataframes.keys()))
-        
-        for i, key in enumerate(dataframes.keys()):
-            with tabs[i]:
-                st.session_state.dataframes[key] = st.data_editor(
-                    st.session_state.dataframes[key],
-                    num_rows="dynamic",
-                    key=f"editor_{key}"
-                )
+    files_uploaded = any(st.session_state.uploaded_files.values())
+    if st.session_state.dataframes and files_uploaded:
+        with st.expander("📝 Edit DataFrames", expanded=False):
+            st.subheader("Modify DataFrames")
+            tabs = st.tabs(list(st.session_state.dataframes.keys()))
+            
+            for i, key in enumerate(st.session_state.dataframes.keys()):
+                with tabs[i]:
+                    st.session_state.dataframes[key] = st.data_editor(
+                        st.session_state.dataframes[key],
+                        num_rows="dynamic",
+                        key=f"editor_{key}"
+                    )
+                    col_dl, col_save = st.columns([1, 1])
+                    with col_dl:
+                        csv = st.session_state.dataframes[key].to_csv(index=False)
+                        st.download_button(
+                            label=f"Download {key} as CSV",
+                            data=csv,
+                            file_name=f"{key}.csv",
+                            mime="text/csv",
+                            key=f"download_{key}"
+                        )
+                    with col_save:
+                        if st.button(f"Save {key} to CSV", key=f"save_{key}"):
+                            save_path = os.path.join("data", f"{key}_edited.csv")
+                            os.makedirs("data", exist_ok=True)
+                            st.session_state.dataframes[key].to_csv(save_path, index=False)
+                            st.success(f"Saved {key} to {save_path}")
     
     # Sidebar controls
     st.sidebar.header("🌍 Chart Controls")
@@ -437,7 +552,7 @@ def main_app(dataframes, country, material):
     # Define columns
     col1, col2 = st.columns([3, 1])
     
-    # Customer selection
+    # Customer selection and price columns
     df = get_dataframe(chart_type, material, data_dict, country)
     customer_name = None
     with col1:
@@ -459,11 +574,118 @@ def main_app(dataframes, country, material):
                     customers,
                     key="customer_select"
                 )
+        
+        # Price column selection for Account price vs Volume
+        if chart_type == "Account price vs Volume" and not df.empty:
+            price_options = (
+                ['pocket price', 'vn_pp', 'apac_pp'] if material == 'TDI' and country == 'Vietnam' else
+                ['pocket price', 'tw_pp', 'apac_pp'] if material == 'TDI' and country == 'Taiwan' else
+                ['pocket price', 'vn_pp', 'seap_pp', 'apac_pp']
+            )
+            price_options = [col for col in price_options if col in df.columns]
+            if not price_options:
+                st.warning(f"No valid price columns available for {material} in {country}")
+                default_price_columns = []
+            else:
+                default_price_columns = ['pocket price'] if 'pocket price' in price_options else [price_options[0]]
+            st.session_state.chart_settings['selected_price_columns'] = st.multiselect(
+                "Select Price Columns to Display",
+                options=price_options,
+                default=st.session_state.chart_settings['selected_price_columns'] or default_price_columns,
+                key="price_columns_select",
+                help="Select which price metrics to display on the chart."
+            )
+        
+        # Chart generation and rendering
+        generate_chart = st.button("Generate Chart") or st.session_state.chart_settings['auto_generate_chart']
+        if chart_type in ["Customer bubble Chart", "Customer Bubble Chart (Centered)"] and not df.empty and 'year' in df.columns:
+            years = sorted(df['year'].unique())
+            st.session_state.chart_settings['bubble_year'] = st.selectbox(
+                "Select Year for Bubble Chart",
+                years,
+                index=0 if st.session_state.chart_settings['bubble_year'] not in years else years.index(st.session_state.chart_settings['bubble_year']),
+                key="bubble_year_select",
+                help="Select a year to filter the bubble chart data."
+            )
+        if generate_chart and files_uploaded:
+            with st.spinner("Generating chart..."):
+                try:
+                    chart_config = get_chart_config(
+                        chart_type,
+                        st.session_state.chart_settings['customer_name_font_size'],
+                        st.session_state.chart_settings['demand_label_font_size'],
+                        st.session_state.chart_settings['legend_font_size'],
+                        st.session_state.chart_settings['y_min'],
+                        st.session_state.chart_settings['y_max'],
+                        st.session_state.chart_settings['bubble_y_min'],
+                        st.session_state.chart_settings['bubble_y_max'],
+                        st.session_state.chart_settings['bubble_scale'],
+                        st.session_state.chart_settings['bubble_alpha'],
+                        st.session_state.chart_settings['price_volume_y_min'],
+                        st.session_state.chart_settings['price_volume_y_max'],
+                        st.session_state.chart_settings['y_demand_min'],
+                        st.session_state.chart_settings['y_demand_max']
+                    )
+                    
+                    if chart_type == "Customer Demand" and customer_name:
+                        chart_figure = plot_customer_demand(
+                            df, customer_name, material, is_taiwan, **chart_config
+                        )
+                    elif chart_type == "Account price vs Volume" and customer_name:
+                        chart_figure = plot_price_volume(
+                            df, customer_name, material, is_taiwan, 
+                            selected_price_columns=st.session_state.chart_settings['selected_price_columns'],
+                            **chart_config
+                        )
+                    elif chart_type == "Business plan" and customer_name:
+                        chart_figure = plot_business_plan(
+                            df, customer_name, material, is_taiwan, **chart_config
+                        )
+                    elif chart_type == "Customer bubble Chart":
+                        chart_figure = plot_bubble_chart(
+                            df, customer_name, material, is_taiwan, 
+                            year_filter=st.session_state.chart_settings['bubble_year'],
+                            **chart_config
+                        )
+                    elif chart_type == "Customer Bubble Chart (Centered)":
+                        chart_figure = plot_bubble_chart_centered(
+                            df, material, 
+                            year_filter=st.session_state.chart_settings['bubble_year'],
+                            **chart_config
+                        )
+                    else:
+                        chart_figure = None
+                        st.error("Please select a valid chart type and customer (if applicable).")
+                    
+                    if chart_figure:
+                        st.plotly_chart(chart_figure, use_container_width=True)
+                        
+                        # Download chart as HTML
+                        buffer = io.StringIO()
+                        chart_figure.write_html(buffer, include_plotlyjs='cdn')
+                        st.download_button(
+                            label="Download Chart as HTML",
+                            data=buffer.getvalue(),
+                            file_name=f"{chart_type.replace(' ', '_').lower()}_{material}_{country}.html",
+                            mime="text/html"
+                        )
+                    else:
+                        st.warning("Chart could not be generated. Please check data and selections.")
+                    # Reset auto_generate_chart after rendering
+                    st.session_state.chart_settings['auto_generate_chart'] = False
+                except Exception as e:
+                    st.error(f"Error during chart generation: {str(e)}")
     
-    # Reset axis ranges
+    # Reset axis ranges and chart settings
     reset_axis_ranges(chart_type, customer_name)
     
     with col2:
+        show_chart_settings = st.selectbox(
+            "Chart Settings Visibility",
+            ["Hide Chart Settings", "Show Chart Settings"],
+            key="show_chart_settings"
+        )
+        
         st.info(f"""
         **Current Selection:**
         - Country: {country}
@@ -473,482 +695,338 @@ def main_app(dataframes, country, material):
         - Year: {st.session_state.chart_settings['bubble_year'] if chart_type in ["Customer bubble Chart", "Customer Bubble Chart (Centered)"] and st.session_state.chart_settings['bubble_year'] is not None else 'Not applicable'}
         """)
         
-        with st.container():
-            st.subheader("🎨 Chart Settings")
-            
-            if st.button("Reset Chart Settings"):
-                st.session_state.chart_settings = {
-                    'customer_name_font_size': 12,
-                    'demand_label_font_size': 14,
-                    'y_min': None,
-                    'y_max': None,
-                    'bubble_y_min': None,
-                    'bubble_y_max': None,
-                    'price_volume_y_min': None,
-                    'price_volume_y_max': None,
-                    'y_demand_min': None,
-                    'y_demand_max': None,
-                    'bubble_scale': 5.0,
-                    'bubble_alpha': 0.7,
-                    'use_custom_y_range': False,
-                    'use_custom_bubble_y_range': False,
-                    'use_custom_price_volume_y_range': False,
-                    'use_custom_y_demand_range': False,
-                    'bubble_year': None,
-                    'selected_price_columns': None,
-                    'min_volume_threshold': 50
-                }
-                st.success("Chart settings reset to default!")
-            
-            with st.expander("🔤 Font Settings"):
-                st.session_state.chart_settings['customer_name_font_size'] = st.slider(
-                    "Customer Name Font Size",
-                    min_value=8,
-                    max_value=20,
-                    value=st.session_state.chart_settings['customer_name_font_size'],
-                    step=1,
-                    key="customer_name_font_size"
-                )
+        if show_chart_settings == "Show Chart Settings":
+            with st.container():
+                st.subheader("🎨 Chart Settings")
+                settings_tabs = st.tabs(["Font Settings", "Axis Settings", "Bubble Settings"])
                 
-                st.session_state.chart_settings['demand_label_font_size'] = st.slider(
-                    "Demand Label Font Size",
-                    min_value=8,
-                    max_value=24,
-                    value=st.session_state.chart_settings['demand_label_font_size'],
-                    step=1,
-                    key="demand_label_font_size"
-                )
-            
-            if chart_type in ["Customer bubble Chart", "Customer Bubble Chart (Centered)"]:
-                with st.expander("🔵 Bubble Chart Specific Settings"):
-                    st.session_state.chart_settings['bubble_scale'] = st.slider(
-                        "Bubble Size Scale", 
-                        min_value=1.0, 
-                        max_value=50.0,
-                        value=st.session_state.chart_settings['bubble_scale'],
-                        step=0.1,
-                        key="bubble_scale"
-                    ) 
-                    
-                    st.session_state.chart_settings['bubble_alpha'] = st.slider(
-                        "Bubble Transparency", 
-                        min_value=0.1, 
-                        max_value=1.0, 
-                        value=st.session_state.chart_settings['bubble_alpha'],
-                        step=0.1,
-                        key="bubble_alpha"
-                    )
-                    
-                    if chart_type == "Customer Bubble Chart (Centered)":
-                        st.session_state.chart_settings['min_volume_threshold'] = st.slider(
-                            "Minimum Volume Threshold",
-                            min_value=0,
-                            max_value=1000,
-                            value=st.session_state.chart_settings['min_volume_threshold'],
-                            step=10,
-                            key="min_volume_threshold"
-                        )
-                    
-                    if st.session_state.chart_settings['bubble_scale'] > 10.0:
-                        st.warning("⚠️ Large bubble sizes may cause overlap. Consider reducing scale.")
-            
-            if chart_type == "Account price vs Volume":
-                with st.expander("📈 Price Columns Selection"):
-                    price_options = (
-                        ['pocket price', 'vn_pp', 'apac_pp'] if material == 'TDI' and country == 'Vietnam' else
-                        ['pocket price', 'tw_pp', 'apac_pp'] if material == 'TDI' and country == 'Taiwan' else
-                        ['pocket price', 'vn_pp', 'seap_pp', 'apac_pp']
-                    )
-                    price_options = [col for col in price_options if col in df.columns]
-                    if not price_options:
-                        st.warning(f"No valid price columns available for {material} in {country}")
-                        default_price_columns = []
-                    else:
-                        default_price_columns = ['pocket price'] if 'pocket price' in price_options else [price_options[0]]
-                    st.session_state.chart_settings['selected_price_columns'] = st.multiselect(
-                        "Select Price Columns to Display",
-                        options=price_options,
-                        default=st.session_state.chart_settings['selected_price_columns'] or default_price_columns,
-                        key="price_columns_select"
-                    )
-            
-            if chart_type in ["Customer bubble Chart", "Customer Bubble Chart (Centered)"]:
-                with st.expander("📏 Bubble Chart Y-Axis Range Control (Price Axis, $/kg)"):
-                    st.session_state.chart_settings['use_custom_bubble_y_range'] = st.checkbox(
-                        "Custom Bubble Chart Y-axis Range",
-                        value=st.session_state.chart_settings.get('use_custom_bubble_y_range', False),
-                        key="custom_bubble_y_range"
-                    )
-                    if st.session_state.chart_settings['use_custom_bubble_y_range']:
-                        range_min, range_max = get_price_range(df, chart_type, material, country, customer_name)
-                        slider_step = 0.01 if chart_type == "Customer Bubble Chart (Centered)" else 0.1
-                        format_str = ".2f" if chart_type == "Customer Bubble Chart (Centered)" else ".1f"
-                        
-                        if st.session_state.chart_settings['bubble_y_min'] is None:
-                            st.session_state.chart_settings['bubble_y_min'] = float(range_min)
-                        if st.session_state.chart_settings['bubble_y_max'] is None:
-                            st.session_state.chart_settings['bubble_y_max'] = float(range_max)
-                        
-                        st.session_state.chart_settings['bubble_y_min'] = st.slider(
-                            "Bubble Chart Y-axis Minimum",
-                            min_value=-1.0 if chart_type == "Customer Bubble Chart (Centered)" else 0.0,
-                            max_value=float(range_max),
-                            value=st.session_state.chart_settings['bubble_y_min'],
-                            step=slider_step,
-                            format=f"%{format_str}",
-                            key="bubble_y_min"
+                with settings_tabs[0]:
+                    if chart_type != "Business plan":
+                        st.session_state.chart_settings['customer_name_font_size'] = st.slider(
+                            "Customer Name Font Size",
+                            min_value=8,
+                            max_value=20,
+                            value=st.session_state.chart_settings['customer_name_font_size'],
+                            step=1,
+                            key="customer_name_font_size",
+                            help="Controls the font size of customer names in chart titles and bubble chart labels."
                         )
                         
-                        st.session_state.chart_settings['bubble_y_max'] = st.slider(
-                            "Bubble Chart Y-axis Maximum",
-                            min_value=float(st.session_state.chart_settings['bubble_y_min'] + slider_step),
-                            max_value=float(range_max * 2),
-                            value=st.session_state.chart_settings['bubble_y_max'],
-                            step=slider_step,
-                            format=f"%{format_str}",
-                            key="bubble_y_max"
+                        st.session_state.chart_settings['demand_label_font_size'] = st.slider(
+                            "Demand Label Font Size",
+                            min_value=8,
+                            max_value=24,
+                            value=st.session_state.chart_settings['demand_label_font_size'],
+                            step=1,
+                            key="demand_label_font_size",
+                            help="Controls the font size of demand/volume labels on charts."
                         )
                         
-                        if st.session_state.chart_settings['bubble_y_min'] >= st.session_state.chart_settings['bubble_y_max']:
-                            st.error("⚠️ Bubble Chart Y-axis minimum must be less than maximum!")
-                            st.session_state.chart_settings['bubble_y_min'] = None
-                            st.session_state.chart_settings['bubble_y_max'] = None
-                        else:
-                            st.info(f"Custom Bubble Chart Y-axis range: {st.session_state.chart_settings['bubble_y_min']:.2f} - {st.session_state.chart_settings['bubble_y_max']:.2f}")
-                    else:
-                        range_min, range_max = get_price_range(df, chart_type, material, country, customer_name)
-                        st.info(f"Auto Bubble Chart Y-axis range: {range_min:.2f} - {range_max:.2f}")
-                        st.session_state.chart_settings['bubble_y_min'] = None
-                        st.session_state.chart_settings['bubble_y_max'] = None
-            
-            elif chart_type == "Account price vs Volume":
-                with st.expander("📏 Price vs Volume Y-Axis Range Control (Price Axis, $/kg)"):
-                    st.session_state.chart_settings['use_custom_price_volume_y_range'] = st.checkbox(
-                        "Custom Price vs Volume Y-axis Range",
-                        value=st.session_state.chart_settings.get('use_custom_price_volume_y_range', False),
-                        key="custom_price_volume_y_range"
-                    )
-                    if st.session_state.chart_settings['use_custom_price_volume_y_range']:
-                        range_min, range_max = get_price_range(df, chart_type, material, country, customer_name, st.session_state.chart_settings['selected_price_columns'])
-                        slider_step = 0.1
-                        format_str = ".1f"
-                        
-                        if st.session_state.chart_settings['price_volume_y_min'] is None:
-                            st.session_state.chart_settings['price_volume_y_min'] = float(range_min)
-                        if st.session_state.chart_settings['price_volume_y_max'] is None:
-                            st.session_state.chart_settings['price_volume_y_max'] = float(range_max)
-                        
-                        st.session_state.chart_settings['price_volume_y_min'] = st.slider(
-                            "Price vs Volume Y-axis Minimum",
-                            min_value=0.0,
-                            max_value=float(range_max),
-                            value=st.session_state.chart_settings['price_volume_y_min'],
-                            step=slider_step,
-                            format=f"%{format_str}",
-                            key="price_volume_y_min"
-                        )
-                        
-                        st.session_state.chart_settings['price_volume_y_max'] = st.slider(
-                            "Price vs Volume Y-axis Maximum",
-                            min_value=float(st.session_state.chart_settings['price_volume_y_min'] + slider_step),
-                            max_value=float(range_max * 2),
-                            value=st.session_state.chart_settings['price_volume_y_max'],
-                            step=slider_step,
-                            format=f"%{format_str}",
-                            key="price_volume_y_max"
-                        )
-                        
-                        if st.session_state.chart_settings['price_volume_y_min'] >= st.session_state.chart_settings['price_volume_y_max']:
-                            st.error("⚠️ Price vs Volume Y-axis minimum must be less than maximum!")
-                            st.session_state.chart_settings['price_volume_y_min'] = None
-                            st.session_state.chart_settings['price_volume_y_max'] = None
-                        else:
-                            st.info(f"Custom Price vs Volume Y-axis range: {st.session_state.chart_settings['price_volume_y_min']:.1f} - {st.session_state.chart_settings['price_volume_y_max']:.1f}")
-                    else:
-                        range_min, range_max = get_price_range(df, chart_type, material, country, customer_name, st.session_state.chart_settings['selected_price_columns'])
-                        st.info(f"Auto Price vs Volume Y-axis range: {range_min:.1f} - {range_max:.1f}")
-                        st.session_state.chart_settings['price_volume_y_min'] = None
-                        st.session_state.chart_settings['price_volume_y_max'] = None
+                        if chart_type in ["Customer Demand", "Account price vs Volume", "Customer bubble Chart", "Customer Bubble Chart (Centered)"]:
+                            st.session_state.chart_settings['legend_font_size'] = st.slider(
+                                "Legend Font Size",
+                                min_value=8,
+                                max_value=20,
+                                value=st.session_state.chart_settings['legend_font_size'],
+                                step=1,
+                                key="legend_font_size",
+                                help="Controls the font size of the legend in the chart."
+                            )
                 
-                with st.expander("📏 Demand Y-Axis Range Control (Demand Axis, mt)"):
-                    st.session_state.chart_settings['use_custom_y_demand_range'] = st.checkbox(
-                        "Custom Demand Y-axis Range",
-                        value=st.session_state.chart_settings.get('use_custom_y_demand_range', False),
-                        key="custom_y_demand_range"
-                    )
-                    if st.session_state.chart_settings['use_custom_y_demand_range']:
-                        range_min, range_max = get_demand_range(df, chart_type, customer_name)
-                        slider_step = 1.0
-                        format_str = ".0f"
-                        
-                        if st.session_state.chart_settings['y_demand_min'] is None:
-                            st.session_state.chart_settings['y_demand_min'] = float(range_min)
-                        if st.session_state.chart_settings['y_demand_max'] is None:
-                            st.session_state.chart_settings['y_demand_max'] = float(range_max)
-                        
-                        st.session_state.chart_settings['y_demand_min'] = st.slider(
-                            "Demand Y-axis Minimum",
-                            min_value=0.0,
-                            max_value=float(range_max),
-                            value=st.session_state.chart_settings['y_demand_min'],
-                            step=slider_step,
-                            format=f"%{format_str}",
-                            key="y_demand_min"
-                        )
-                        
-                        st.session_state.chart_settings['y_demand_max'] = st.slider(
-                            "Demand Y-axis Maximum",
-                            min_value=float(st.session_state.chart_settings['y_demand_min'] + slider_step),
-                            max_value=float(range_max * 2),
-                            value=st.session_state.chart_settings['y_demand_max'],
-                            step=slider_step,
-                            format=f"%{format_str}",
-                            key="y_demand_max"
-                        )
-                        
-                        if st.session_state.chart_settings['y_demand_min'] >= st.session_state.chart_settings['y_demand_max']:
-                            st.error("⚠️ Demand Y-axis minimum must be less than maximum!")
-                            st.session_state.chart_settings['y_demand_min'] = None
-                            st.session_state.chart_settings['y_demand_max'] = None
-                        else:
-                            st.info(f"Custom Demand Y-axis range: {st.session_state.chart_settings['y_demand_min']:.0f} - {st.session_state.chart_settings['y_demand_max']:.0f}")
-                    else:
-                        range_min, range_max = get_demand_range(df, chart_type, customer_name)
-                        st.info(f"Auto Demand Y-axis range: {range_min:.0f} - {range_max:.0f}")
-                        st.session_state.chart_settings['y_demand_min'] = None
-                        st.session_state.chart_settings['y_demand_max'] = None
-            
-            elif chart_type == "Customer Demand":
-                with st.expander("📏 Y-Axis Range Control (Demand Axis, mt)"):
-                    st.session_state.chart_settings['use_custom_y_range'] = st.checkbox(
-                        "Custom Y-axis Range",
-                        value=st.session_state.chart_settings.get('use_custom_y_range', False),
-                        key="custom_y_range"
-                    )
-                    if st.session_state.chart_settings['use_custom_y_range']:
-                        range_min, range_max = get_demand_range(df, chart_type, customer_name)
-                        slider_step = 1.0
-                        format_str = ".0f"
-                        
-                        if st.session_state.chart_settings['y_min'] is None:
-                            st.session_state.chart_settings['y_min'] = float(range_min)
-                        if st.session_state.chart_settings['y_max'] is None:
-                            st.session_state.chart_settings['y_max'] = float(range_max)
-                        
-                        st.session_state.chart_settings['y_min'] = st.slider(
-                            "Y-axis Minimum",
-                            min_value=0.0,
-                            max_value=float(range_max),
-                            value=st.session_state.chart_settings['y_min'],
-                            step=slider_step,
-                            format=f"%{format_str}",
-                            key="y_min"
-                        )
-                        
-                        st.session_state.chart_settings['y_max'] = st.slider(
-                            "Y-axis Maximum",
-                            min_value=float(st.session_state.chart_settings['y_min'] + slider_step),
-                            max_value=float(range_max * 2),
-                            value=st.session_state.chart_settings['y_max'],
-                            step=slider_step,
-                            format=f"%{format_str}",
-                            key="y_max"
-                        )
-                        
-                        if st.session_state.chart_settings['y_min'] >= st.session_state.chart_settings['y_max']:
-                            st.error("⚠️ Y-axis minimum must be less than maximum!")
-                            st.session_state.chart_settings['y_min'] = None
-                            st.session_state.chart_settings['y_max'] = None
-                        else:
-                            st.info(f"Custom Y-axis range: {st.session_state.chart_settings['y_min']:.0f} - {st.session_state.chart_settings['y_max']:.0f}")
-                    else:
-                        range_min, range_max = get_demand_range(df, chart_type, customer_name)
-                        st.info(f"Auto Y-axis range: {range_min:.0f} - {range_max:.0f}")
-                        st.session_state.chart_settings['y_min'] = None
-                        st.session_state.chart_settings['y_max'] = None
-    
-    with col1:
-        st.subheader(f"{chart_type} Visualization")
-        
-        if not df.empty and (chart_type in ["Customer bubble Chart", "Customer Bubble Chart (Centered)"] or 'customer' in df.columns):
-            chart_config = get_chart_config(
-                chart_type,
-                st.session_state.chart_settings['customer_name_font_size'],
-                st.session_state.chart_settings['demand_label_font_size'],
-                st.session_state.chart_settings['y_min'],
-                st.session_state.chart_settings['y_max'],
-                st.session_state.chart_settings['bubble_y_min'],
-                st.session_state.chart_settings['bubble_y_max'],
-                st.session_state.chart_settings['bubble_scale'],
-                st.session_state.chart_settings['bubble_alpha'],
-                st.session_state.chart_settings['price_volume_y_min'],
-                st.session_state.chart_settings['price_volume_y_max'],
-                st.session_state.chart_settings['y_demand_min'],
-                st.session_state.chart_settings['y_demand_max']
-            )
-            
-            year_filter = None
-            if chart_type in ["Customer bubble Chart", "Customer Bubble Chart (Centered)"] and 'year' in df.columns:
-                available_years = sorted(df['year'].unique())
-                if available_years:
-                    if st.session_state.chart_settings['bubble_year'] not in available_years:
-                        st.session_state.chart_settings['bubble_year'] = available_years[-1]
-                    year_filter = st.selectbox(
-                        "Select Year for Bubble Chart",
-                        available_years,
-                        index=available_years.index(st.session_state.chart_settings['bubble_year']),
-                        key="bubble_year_select"
-                    )
-                    st.session_state.chart_settings['bubble_year'] = year_filter
-                else:
-                    st.warning("No valid years found in the data. Using all data.")
-            
-            if st.button(f"🎯 Generate {chart_type} Chart", type="primary", key="generate_chart"):
-                with st.spinner("Generating chart..."):
+                with settings_tabs[1]:
                     if chart_type == "Customer Demand":
-                        chart_figure = plot_customer_demand(
-                            df, customer_name, material, is_taiwan,
-                            chart_config['title_fontsize'], chart_config['axis_label_fontsize'],
-                            chart_config['tick_fontsize'], chart_config['legend_fontsize'],
-                            chart_config['legend_title_fontsize'], chart_config['value_label_fontsize'],
-                            chart_config['customer_name_font_size'], chart_config['demand_label_font_size'],
-                            chart_config['y_min'], chart_config['y_max']
-                        )
+                        with st.expander("📏 Y-Axis Range Control (Demand Axis, mt)"):
+                            st.session_state.chart_settings['use_custom_y_range'] = st.checkbox(
+                                "Custom Y-axis Range",
+                                value=st.session_state.chart_settings.get('use_custom_y_range', False),
+                                key="custom_y_range"
+                            )
+                            if st.session_state.chart_settings['use_custom_y_range']:
+                                range_min, range_max = get_demand_range(df, chart_type, customer_name)
+                                if st.session_state.chart_settings['y_min'] is None:
+                                    st.session_state.chart_settings['y_min'] = float(range_min)
+                                if st.session_state.chart_settings['y_max'] is None:
+                                    st.session_state.chart_settings['y_max'] = float(range_max)
+                                
+                                st.session_state.chart_settings['y_min'] = st.slider(
+                                    "Y-axis Minimum",
+                                    min_value=0.0,
+                                    max_value=float(range_max * 2),
+                                    value=st.session_state.chart_settings['y_min'],
+                                    step=0.1,
+                                    format="%.1f",
+                                    key="y_min"
+                                )
+                                
+                                st.session_state.chart_settings['y_max'] = st.slider(
+                                    "Y-axis Maximum",
+                                    min_value=float(st.session_state.chart_settings['y_min'] + 0.1),
+                                    max_value=float(range_max * 2),
+                                    value=st.session_state.chart_settings['y_max'],
+                                    step=0.1,
+                                    format="%.1f",
+                                    key="y_max"
+                                )
+                                
+                                if st.session_state.chart_settings['y_min'] >= st.session_state.chart_settings['y_max']:
+                                    st.error("⚠️ Y-axis minimum must be less than maximum!")
+                                    st.session_state.chart_settings['y_min'] = None
+                                    st.session_state.chart_settings['y_max'] = None
+                                else:
+                                    st.info(f"Custom Y-axis range: {st.session_state.chart_settings['y_min']:.1f} - {st.session_state.chart_settings['y_max']:.1f}")
+                            else:
+                                range_min, range_max = get_demand_range(df, chart_type, customer_name)
+                                st.info(f"Auto Y-axis range: {range_min:.1f} - {range_max:.1f}")
+                                st.session_state.chart_settings['y_min'] = None
+                                st.session_state.chart_settings['y_max'] = None
+                    
                     elif chart_type == "Account price vs Volume":
-                        chart_figure = plot_price_volume(
-                            df, customer_name, material, is_taiwan,
-                            chart_config['title_fontsize'], chart_config['axis_label_fontsize'],
-                            chart_config['tick_fontsize'], chart_config['legend_fontsize'],
-                            chart_config['legend_title_fontsize'], chart_config['price_annotation_fontsize'],
-                            chart_config['annotation_spacing'], chart_config['value_label_fontsize'],
-                            chart_config['customer_name_font_size'], chart_config['demand_label_font_size'],
-                            chart_config['y_min'], chart_config['y_max'],
-                            chart_config['y_demand_min'], chart_config['y_demand_max'],
-                            st.session_state.chart_settings['selected_price_columns']
-                        )
-                    elif chart_type == "Customer bubble Chart":
-                        chart_figure = plot_bubble_chart(
-                            df, None, material, is_taiwan,
-                            chart_config['title_fontsize'], chart_config['axis_label_fontsize'],
-                            chart_config['tick_fontsize'], chart_config['legend_fontsize'],
-                            chart_config['bubble_scale'], chart_config['alpha'],
-                            chart_config['customer_name_font_size'], chart_config['demand_label_font_size'],
-                            chart_config['y_min'], chart_config['y_max'],
-                            year_filter
-                        )
-                    elif chart_type == "Customer Bubble Chart (Centered)":
-                        chart_figure = plot_bubble_chart_centered(
-                            df, material,
-                            chart_config['title_fontsize'], chart_config['axis_label_fontsize'],
-                            chart_config['tick_fontsize'], chart_config['legend_fontsize'],
-                            chart_config['bubble_scale'], chart_config['alpha'],
-                            chart_config['customer_name_font_size'], chart_config['demand_label_font_size'],
-                            chart_config['y_min'], chart_config['y_max'],
-                            year_filter,
-                            chart_config['min_volume_threshold']
-                        )
-                    elif chart_type == "Business plan":
-                        chart_figure = plot_business_plan(
-                            df, customer_name, material, is_taiwan,
-                            chart_config['title_fontsize'], chart_config['axis_label_fontsize'],
-                            chart_config['tick_fontsize'], chart_config['legend_fontsize'],
-                            chart_config['value_label_fontsize']
-                        )
-                     
-                    if chart_figure:
-                        st.plotly_chart(chart_figure, use_container_width=True)
-                        st.success("Chart generated successfully! 🎉")
+                        with st.expander("📏 Price Y-Axis Range Control (Price Axis, $/kg)"):
+                            st.session_state.chart_settings['use_custom_price_volume_y_range'] = st.checkbox(
+                                "Custom Price Y-axis Range",
+                                value=st.session_state.chart_settings.get('use_custom_price_volume_y_range', False),
+                                key="custom_price_volume_y_range"
+                            )
+                            if st.session_state.chart_settings['use_custom_price_volume_y_range']:
+                                range_min, range_max = get_price_range(df, chart_type, material, country, customer_name)
+                                if st.session_state.chart_settings['price_volume_y_min'] is None:
+                                    st.session_state.chart_settings['price_volume_y_min'] = float(range_min)
+                                if st.session_state.chart_settings['price_volume_y_max'] is None:
+                                    st.session_state.chart_settings['price_volume_y_max'] = float(range_max)
+                                
+                                st.session_state.chart_settings['price_volume_y_min'] = st.slider(
+                                    "Price Y-axis Minimum",
+                                    min_value=0.0,
+                                    max_value=float(range_max * 2),
+                                    value=st.session_state.chart_settings['price_volume_y_min'],
+                                    step=0.1,
+                                    format="%.1f",
+                                    key="price_volume_y_min"
+                                )
+                                
+                                st.session_state.chart_settings['price_volume_y_max'] = st.slider(
+                                    "Price Y-axis Maximum",
+                                    min_value=float(st.session_state.chart_settings['price_volume_y_min'] + 0.1),
+                                    max_value=float(range_max * 2),
+                                    value=st.session_state.chart_settings['price_volume_y_max'],
+                                    step=0.1,
+                                    format="%.1f",
+                                    key="price_volume_y_max"
+                                )
+                                
+                                if st.session_state.chart_settings['price_volume_y_min'] >= st.session_state.chart_settings['price_volume_y_max']:
+                                    st.error("⚠️ Price Y-axis minimum must be less than maximum!")
+                                    st.session_state.chart_settings['price_volume_y_min'] = None
+                                    st.session_state.chart_settings['price_volume_y_max'] = None
+                                else:
+                                    st.info(f"Custom Price Y-axis range: {st.session_state.chart_settings['price_volume_y_min']:.1f} - {st.session_state.chart_settings['price_volume_y_max']:.1f}")
+                            else:
+                                range_min, range_max = get_price_range(df, chart_type, material, country, customer_name)
+                                st.info(f"Auto Price Y-axis range: {range_min:.1f} - {range_max:.1f}")
+                                st.session_state.chart_settings['price_volume_y_min'] = None
+                                st.session_state.chart_settings['price_volume_y_max'] = None
                         
-                        # Save chart as HTML
-                        filename = f"{chart_type.replace(' ', '_')}_{country}_{material}"
-                        if customer_name and chart_type not in ["Customer bubble Chart", "Customer Bubble Chart (Centered)"]:
-                            filename += f"_{customer_name}"
-                        if year_filter:
-                            filename += f"_{year_filter}"
-                        filename = filename.replace(" ", "_").replace("(", "").replace(")", "") + ".html"
+                        with st.expander("📏 Demand Y-Axis Range Control (Demand Axis, mt)"):
+                            st.session_state.chart_settings['use_custom_y_demand_range'] = st.checkbox(
+                                "Custom Demand Y-axis Range",
+                                value=st.session_state.chart_settings.get('use_custom_y_demand_range', False),
+                                key="custom_y_demand_range"
+                            )
+                            if st.session_state.chart_settings['use_custom_y_demand_range']:
+                                range_min, range_max = get_demand_range(df, chart_type, customer_name)
+                                if st.session_state.chart_settings['y_demand_min'] is None:
+                                    st.session_state.chart_settings['y_demand_min'] = float(range_min)
+                                if st.session_state.chart_settings['y_demand_max'] is None:
+                                    st.session_state.chart_settings['y_demand_max'] = float(range_max)
+                                
+                                st.session_state.chart_settings['y_demand_min'] = st.slider(
+                                    "Demand Y-axis Minimum",
+                                    min_value=0.0,
+                                    max_value=float(range_max * 2),
+                                    value=st.session_state.chart_settings['y_demand_min'],
+                                    step=0.1,
+                                    format="%.1f",
+                                    key="y_demand_min"
+                                )
+                                
+                                st.session_state.chart_settings['y_demand_max'] = st.slider(
+                                    "Demand Y-axis Maximum",
+                                    min_value=float(st.session_state.chart_settings['y_demand_min'] + 0.1),
+                                    max_value=float(range_max * 2),
+                                    value=st.session_state.chart_settings['y_demand_max'],
+                                    step=0.1,
+                                    format="%.1f",
+                                    key="y_demand_max"
+                                )
+                                
+                                if st.session_state.chart_settings['y_demand_min'] >= st.session_state.chart_settings['y_demand_max']:
+                                    st.error("⚠️ Demand Y-axis minimum must be less than maximum!")
+                                    st.session_state.chart_settings['y_demand_min'] = None
+                                    st.session_state.chart_settings['y_demand_max'] = None
+                                else:
+                                    st.info(f"Custom Demand Y-axis range: {st.session_state.chart_settings['y_demand_min']:.1f} - {st.session_state.chart_settings['y_demand_max']:.1f}")
+                            else:
+                                range_min, range_max = get_demand_range(df, chart_type, customer_name)
+                                st.info(f"Auto Demand Y-axis range: {range_min:.1f} - {range_max:.1f}")
+                                st.session_state.chart_settings['y_demand_min'] = None
+                                st.session_state.chart_settings['y_demand_max'] = None
+                    
+                    elif chart_type in ["Customer bubble Chart", "Customer Bubble Chart (Centered)"]:
+                        with st.expander("📏 Bubble Chart Y-Axis Range Control (Price Axis, $/kg)"):
+                            st.session_state.chart_settings['use_custom_bubble_y_range'] = st.checkbox(
+                                "Custom Bubble Chart Y-axis Range",
+                                value=st.session_state.chart_settings.get('use_custom_bubble_y_range', False),
+                                key="custom_bubble_y_range"
+                            )
+                            if st.session_state.chart_settings['use_custom_bubble_y_range']:
+                                range_min, range_max = get_price_range(df, chart_type, material, country, customer_name)
+                                slider_step = 0.01 if chart_type == "Customer Bubble Chart (Centered)" else 0.1
+                                format_str = ".2f" if chart_type == "Customer Bubble Chart (Centered)" else ".1f"
+                                
+                                if st.session_state.chart_settings['bubble_y_min'] is None:
+                                    st.session_state.chart_settings['bubble_y_min'] = float(range_min)
+                                if st.session_state.chart_settings['bubble_y_max'] is None:
+                                    st.session_state.chart_settings['bubble_y_max'] = float(range_max)
+                                
+                                st.session_state.chart_settings['bubble_y_min'] = st.slider(
+                                    "Bubble Chart Y-axis Minimum",
+                                    min_value=-1.0 if chart_type == "Customer Bubble Chart (Centered)" else 0.0,
+                                    max_value=float(range_max * 2),
+                                    value=st.session_state.chart_settings['bubble_y_min'],
+                                    step=slider_step,
+                                    format=f"%{format_str}",
+                                    key="bubble_y_min"
+                                )
+                                
+                                st.session_state.chart_settings['bubble_y_max'] = st.slider(
+                                    "Bubble Chart Y-axis Maximum",
+                                    min_value=float(st.session_state.chart_settings['bubble_y_min'] + slider_step),
+                                    max_value=float(range_max * 2),
+                                    value=st.session_state.chart_settings['bubble_y_max'],
+                                    step=slider_step,
+                                    format=f"%{format_str}",
+                                    key="bubble_y_max"
+                                )
+                                
+                                if st.session_state.chart_settings['bubble_y_min'] >= st.session_state.chart_settings['bubble_y_max']:
+                                    st.error("⚠️ Bubble Chart Y-axis minimum must be less than maximum!")
+                                    st.session_state.chart_settings['bubble_y_min'] = None
+                                    st.session_state.chart_settings['bubble_y_max'] = None
+                                else:
+                                    st.info(f"Custom Bubble Chart Y-axis range: {st.session_state.chart_settings['bubble_y_min']:.2f} - {st.session_state.chart_settings['bubble_y_max']:.2f}")
+                            else:
+                                range_min, range_max = get_price_range(df, chart_type, material, country, customer_name)
+                                st.info(f"Auto Bubble Chart Y-axis range: {range_min:.2f} - {range_max:.2f}")
+                                st.session_state.chart_settings['bubble_y_min'] = None
+                                st.session_state.chart_settings['bubble_y_max'] = None
+                
+                with settings_tabs[2]:
+                    if chart_type in ["Customer bubble Chart", "Customer Bubble Chart (Centered)"]:
+                        st.session_state.chart_settings['bubble_scale'] = st.slider(
+                            "Bubble Size Scale", 
+                            min_value=1.0, 
+                            max_value=50.0,
+                            value=st.session_state.chart_settings['bubble_scale'],
+                            step=0.1,
+                            key="bubble_scale",
+                            help="Controls the size of bubbles in the chart. Higher values increase bubble size."
+                        ) 
                         
-                        buffer = io.StringIO()
-                        chart_figure.write_html(buffer, full_html=True)
-                        buffer.seek(0)
-                        html_content = buffer.getvalue()
-                        
-                        st.download_button(
-                            label="📥 Save Chart as HTML",
-                            data=html_content,
-                            file_name=filename,
-                            mime="text/html",
-                            type="primary",
-                            key="save_chart_html"
+                        st.session_state.chart_settings['bubble_alpha'] = st.slider(
+                            "Bubble Transparency", 
+                            min_value=0.1, 
+                            max_value=1.0, 
+                            value=st.session_state.chart_settings['bubble_alpha'],
+                            step=0.1,
+                            key="bubble_alpha",
+                            help="Controls the transparency of bubbles (0.1 = very transparent, 1.0 = opaque)."
                         )
-                    else:
-                        st.error("Failed to generate chart due to invalid data or settings.")
-        else:
-            st.error("❌ No data available to display. Please check your input DataFrames.")
-            
-            if st.checkbox("Show data information"):
-                st.write("Available data keys:", list(data_dict.keys()))
-                for key, data in data_dict.items():
-                    if not data.empty:
-                        st.write(f"{key}: {data.shape[0]} rows, {data.shape[1]} columns")
-                        if 'customer' in data.columns:
-                            st.write(f"Customers in {key}: {len(data['customer'].unique())}")
-                        if 'year' in data.columns:
-                            st.write(f"Years in {key}: {sorted(data['year'].unique())}")
+                        
+                        if chart_type == "Customer Bubble Chart (Centered)":
+                            st.session_state.chart_settings['min_volume_threshold'] = st.slider(
+                                "Minimum Volume Threshold",
+                                min_value=0,
+                                max_value=1000,
+                                value=st.session_state.chart_settings['min_volume_threshold'],
+                                step=10,
+                                key="min_volume_threshold",
+                                help="Filters out customers with volume below this threshold."
+                            )
+                        
+                        if st.session_state.chart_settings['bubble_scale'] > 10.0:
+                            st.warning("⚠️ Large bubble sizes may cause overlap. Consider reducing scale.")
 
 def main():
-    """Main entry point to control app flow"""
-    # Initialize session state
-    if 'all_files_uploaded' not in st.session_state:
-        st.session_state.all_files_uploaded = False
-    if 'selected_country' not in st.session_state:
-        st.session_state.selected_country = None
-    if 'selected_material' not in st.session_state:
-        st.session_state.selected_material = None
+    """Main entry point for the Streamlit app"""
+    st.sidebar.header("🌎 Country and Material")
+    country = st.sidebar.selectbox("Select Country", COUNTRIES, key="country_select")
+    material_options = ["TDI"] if country == "Taiwan" else MATERIALS
+    material = st.sidebar.selectbox("Select Material", material_options, key="material_select")
     
-    # Country and material selection
-    st.title("📊 PMDI and TDI Market Visualization Dashboard")
-    st.markdown("---")
-    with st.container():
-        st.subheader("🌍 Select Country and Material")
-        col_country, col_material = st.columns(2)
-        with col_country:
-            country = st.selectbox("Choose a country to upload data for", COUNTRIES, key="country_select")
-        with col_material:
-            # Disable PMDI for Taiwan
-            material_options = ["TDI"] if country == "Taiwan" else MATERIALS
-            material = st.selectbox("Choose a material", material_options, key="material_select")
-        
-        # Reset upload status if country or material changes
-        if (st.session_state.selected_country != country or 
-            st.session_state.selected_material != material):
-            st.session_state.all_files_uploaded = False
-            st.session_state.dataframes = {}
-            st.session_state.selected_country = country
-            st.session_state.selected_material = material
-    
-    # If all files are not uploaded, show upload interface
-    if not st.session_state.all_files_uploaded:
-        st.subheader(f"📂 Upload CSV Files for {material} in {country}")
-        st.info(f"Please upload all required CSV files for {material} in {country} to proceed. Files are processed in-memory and not stored on the server.")
-        
-        # Load and validate DataFrames
-        df_main, df_bp, df_ppd, all_uploaded = load_and_extract_dataframes(country, material)
-        dataframes = {
-            'df_mdi' if material == "PMDI" else 'df_tdi': df_main,
-            'df_mdi_bp' if material == "PMDI" else 'df_tdi_bp': df_bp,
-            'df_ppd': df_ppd
+    # Initialize session state for uploaded files
+    if 'uploaded_files' not in st.session_state:
+        st.session_state.uploaded_files = {
+            'main_file': None,
+            'bp_file': None,
+            'ppd_file': None
         }
-        
-        # Update session state if all files are valid
-        if all_uploaded:
-            st.session_state.all_files_uploaded = True
-            st.session_state.dataframes = {k: v.copy() for k, v in dataframes.items()}
-            st.rerun()  # Rerun to switch to main app
-        else:
-            st.warning(f"Please upload and validate all required CSV files for {material} in {country} to proceed.")
-    else:
-        # Show main app with DataFrame editing and chart visualization
-        main_app(st.session_state.dataframes, country, material)
+    if 'upload_complete' not in st.session_state:
+        st.session_state.upload_complete = False
+    
+    # Reset uploaded files if country or material changes
+    if (st.session_state.get('previous_country_main') != country or 
+        st.session_state.get('previous_material_main') != material):
+        st.session_state.uploaded_files = {
+            'main_file': None,
+            'bp_file': None,
+            'ppd_file': None
+        }
+        st.session_state.upload_complete = False
+        st.session_state.dataframes = {}
+    st.session_state.previous_country_main = country
+    st.session_state.previous_material_main = material
+    
+    # Sidebar toggle for upload section
+    show_upload_section = st.sidebar.checkbox("Show CSV Upload Section", value=not st.session_state.upload_complete, key="show_upload_section")
+    
+    # Load data from uploaded files
+    df_main, df_bp, df_ppd, all_uploaded = load_and_extract_dataframes(country, material, show_upload_section, st.session_state.uploaded_files)
+    
+    # Populate dataframes from uploaded files
+    dataframes = {}
+    for file_key, file_name in [('main_file', 'df_mdi' if material == 'PMDI' else 'df_tdi'),
+                                ('bp_file', 'df_mdi_bp' if material == 'PMDI' else 'df_tdi_bp'),
+                                ('ppd_file', 'df_ppd')]:
+        if st.session_state.uploaded_files[file_key]:
+            try:
+                file_obj = st.session_state.uploaded_files[file_key]
+                file_obj.seek(0)
+                if file_obj.size == 0:
+                    st.error(f"Uploaded file for {file_name} is empty. Please upload a valid CSV file.")
+                    continue
+                df = pd.read_csv(file_obj, encoding='utf-8')
+                if df.empty:
+                    st.error(f"Uploaded file for {file_name} contains no data. Please upload a valid CSV file.")
+                    continue
+                dataframes[file_name] = df
+            except pd.errors.EmptyDataError:
+                st.error(f"Failed to parse {file_name}: File is empty or has no columns. Please upload a valid CSV file.")
+            except Exception as e:
+                st.error(f"Error reading {file_name}: {str(e)}. Please ensure the file is a valid CSV.")
+    
+    # Update upload complete status and dataframes
+    required_keys = ['df_mdi' if material == 'PMDI' else 'df_tdi', 
+                     'df_mdi_bp' if material == 'PMDI' else 'df_tdi_bp', 
+                     'df_ppd']
+    if all(key in dataframes and not dataframes[key].empty for key in required_keys):
+        st.session_state.upload_complete = True
+        st.session_state.dataframes = {k: v.copy() for k, v in dataframes.items()}
+        st.session_state.chart_settings['auto_generate_chart'] = True
+    
+    # Always call main_app to ensure UI renders
+    if dataframes and all_uploaded:
+        st.success("All files uploaded successfully! Ready to generate charts.")
+    main_app(dataframes, country, material, show_upload_section)
 
 if __name__ == "__main__":
     main()

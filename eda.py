@@ -1,92 +1,97 @@
 import streamlit as st
 import pandas as pd
+from config import REQUIRED_COLUMNS, MATERIALS
 
-def load_and_extract_dataframes(country, material):
-    """
-    Load and extract DataFrames from user-uploaded CSV files for the selected country and material.
-    Returns three DataFrames and a boolean indicating if all files are uploaded and valid.
-    """
-    # Define expected column requirements for validation
-    REQUIRED_COLUMNS = {
-        'price_charts': ['customer', 'demand', 'pocket price'],
-        'business_plan': ['customer', 'year', 'min', 'base', 'max'],
-        'bubble_centered': ['customer', 'year', 'sow', 'ppd', 'volume']
-    }
-    
-    # Initialize empty DataFrames and upload status
+def load_and_extract_dataframes(country, material, show_upload_section, uploaded_files):
+    """Load and extract DataFrames for the given country and material, using session state for persistence"""
     df_main = pd.DataFrame()
     df_bp = pd.DataFrame()
     df_ppd = pd.DataFrame()
-    upload_status = {
-        'main': False,
-        'bp': False,
-        'ppd': False
-    }
-    
-    # Create container for upload interface
-    with st.container():
-        st.markdown(f"### 📂 Upload Required CSV Files for {material} in {country}")
-        st.info("Upload all required CSV files to proceed. Files are processed in-memory and not stored on the server.")
-        
-        # Define tab names based on material and country
-        if material == "PMDI":
-            tab_names = ["MDI", "MDI BP", "PPD"]
-            main_label = f"MDI ({country})"
-            bp_label = f"MDI BP ({country})"
-        else:
-            tab_names = ["TDI", "TDI BP", "PPD"]
-            main_label = f"TDI ({country})"
-            bp_label = f"TDI BP ({country})"
-        
-        # Create tabs for file uploads
-        tabs = st.tabs(tab_names)
-        
-        with tabs[0]:
-            uploaded_file = st.file_uploader(f"Upload {main_label} CSV", type=["csv"], key=f"upload_main_{country.lower()}_{material.lower()}")
-            if uploaded_file:
-                try:
-                    df_main = pd.read_csv(uploaded_file)
-                    if all(col in df_main.columns for col in REQUIRED_COLUMNS['price_charts']):
-                        st.success(f"{main_label} CSV uploaded successfully!")
-                        upload_status['main'] = True
+    all_uploaded = False
+
+    if show_upload_section and not st.session_state.get('upload_complete', False):
+        with st.container():
+            st.header("📤 Upload CSV Files")
+            if material == "PMDI":
+                main_label = "Main Data (PMDI)"
+                bp_label = "Business Plan (PMDI)"
+                ppd_label = "PPD Data"
+            else:
+                main_label = "Main Data (TDI)"
+                bp_label = "Business Plan (TDI)"
+                ppd_label = "PPD Data"
+            
+            # Create tabs for file uploads
+            tabs = st.tabs([main_label, bp_label, ppd_label])
+            
+            # File uploaders in tabs
+            with tabs[0]:
+                new_main_file = st.file_uploader(f"Upload {main_label} CSV", type=["csv"], key="main_file")
+                if new_main_file is not None:
+                    new_main_file.seek(0)
+                    if new_main_file.size == 0:
+                        st.error(f"{main_label} CSV is empty. Please upload a valid CSV file.")
                     else:
-                        st.error(f"{main_label} CSV missing required columns: {REQUIRED_COLUMNS['price_charts']}")
-                        df_main = pd.DataFrame()
-                except Exception as e:
-                    st.error(f"Error reading {main_label} CSV: {str(e)}")
-                    df_main = pd.DataFrame()
-        
-        with tabs[1]:
-            uploaded_file = st.file_uploader(f"Upload {bp_label} CSV", type=["csv"], key=f"upload_bp_{country.lower()}_{material.lower()}")
-            if uploaded_file:
-                try:
-                    df_bp = pd.read_csv(uploaded_file)
-                    if all(col in df_bp.columns for col in REQUIRED_COLUMNS['business_plan']):
-                        st.success(f"{bp_label} CSV uploaded successfully!")
-                        upload_status['bp'] = True
+                        try:
+                            df = pd.read_csv(new_main_file, encoding='utf-8')
+                            if df.empty:
+                                st.error(f"{main_label} CSV contains no data. Please upload a valid CSV file.")
+                            else:
+                                uploaded_files['main_file'] = new_main_file
+                        except pd.errors.EmptyDataError:
+                            st.error(f"Failed to parse {main_label} CSV: File is empty or has no columns.")
+                        except Exception as e:
+                            st.error(f"Error reading {main_label} CSV: {str(e)}. Please ensure the file is a valid CSV.")
+            
+            with tabs[1]:
+                new_bp_file = st.file_uploader(f"Upload {bp_label} CSV", type=["csv"], key="bp_file")
+                if new_bp_file is not None:
+                    new_bp_file.seek(0)
+                    if new_bp_file.size == 0:
+                        st.error(f"{bp_label} CSV is empty. Please upload a valid CSV file.")
                     else:
-                        st.error(f"{bp_label} CSV missing required columns: {REQUIRED_COLUMNS['business_plan']}")
-                        df_bp = pd.DataFrame()
-                except Exception as e:
-                    st.error(f"Error reading {bp_label} CSV: {str(e)}")
-                    df_bp = pd.DataFrame()
-        
-        with tabs[2]:
-            uploaded_file = st.file_uploader(f"Upload PPD ({country}) CSV", type=["csv"], key=f"upload_ppd_{country.lower()}")
-            if uploaded_file:
-                try:
-                    df_ppd = pd.read_csv(uploaded_file)
-                    if all(col in df_ppd.columns for col in REQUIRED_COLUMNS['bubble_centered']):
-                        st.success(f"PPD ({country}) CSV uploaded successfully!")
-                        upload_status['ppd'] = True
+                        try:
+                            df = pd.read_csv(new_bp_file, encoding='utf-8')
+                            if df.empty:
+                                st.error(f"{bp_label} CSV contains no data. Please upload a valid CSV file.")
+                            else:
+                                uploaded_files['bp_file'] = new_bp_file
+                        except pd.errors.EmptyDataError:
+                            st.error(f"Failed to parse {bp_label} CSV: File is empty or has no columns.")
+                        except Exception as e:
+                            st.error(f"Error reading {bp_label} CSV: {str(e)}. Please ensure the file is a valid CSV.")
+            
+            with tabs[2]:
+                new_ppd_file = st.file_uploader(f"Upload {ppd_label} CSV", type=["csv"], key="ppd_file")
+                if new_ppd_file is not None:
+                    new_ppd_file.seek(0)
+                    if new_ppd_file.size == 0:
+                        st.error(f"{ppd_label} CSV is empty. Please upload a valid CSV file.")
                     else:
-                        st.error(f"PPD ({country}) CSV missing required columns: {REQUIRED_COLUMNS['bubble_centered']}")
-                        df_ppd = pd.DataFrame()
-                except Exception as e:
-                    st.error(f"Error reading PPD ({country}) CSV: {str(e)}")
-                    df_ppd = pd.DataFrame()
+                        try:
+                            df = pd.read_csv(new_ppd_file, encoding='utf-8')
+                            if df.empty:
+                                st.error(f"{ppd_label} CSV contains no data. Please upload a valid CSV file.")
+                            else:
+                                uploaded_files['ppd_file'] = new_ppd_file
+                        except pd.errors.EmptyDataError:
+                            st.error(f"Failed to parse {ppd_label} CSV: File is empty or has no columns.")
+                        except Exception as e:
+                            st.error(f"Error reading {ppd_label} CSV: {str(e)}. Please ensure the file is a valid CSV.")
     
-    # Check if all files are uploaded and valid
-    all_uploaded = all(upload_status.values())
+    # Read uploaded files into DataFrames
+    for file_key, df_name in [('main_file', 'df_main'), ('bp_file', 'df_bp'), ('ppd_file', 'df_ppd')]:
+        if uploaded_files.get(file_key):
+            try:
+                uploaded_files[file_key].seek(0)
+                df = pd.read_csv(uploaded_files[file_key], encoding='utf-8')
+                locals()[df_name] = df
+            except pd.errors.EmptyDataError:
+                st.error(f"Failed to parse {file_key}: File is empty or has no columns.")
+            except Exception as e:
+                st.error(f"Error reading {file_key}: {str(e)}.")
     
+    if all(uploaded_files.get(key) for key in ['main_file', 'bp_file', 'ppd_file']):
+        all_uploaded = not df_main.empty and not df_bp.empty and not df_ppd.empty
+
     return df_main, df_bp, df_ppd, all_uploaded
