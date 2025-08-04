@@ -3,7 +3,7 @@ import streamlit as st
 import plotly.graph_objects as go
 import drawchat
 import io
-from EDA import load_and_extract_dataframes
+from eda import load_and_extract_dataframes
 
 # Constants
 REQUIRED_COLUMNS = {
