@@ -218,9 +218,9 @@ def plot_price_volume(df, customer_name, material, is_taiwan, title_fontsize, ax
     max_price = df_filtered['pocket price'].max() if not df_filtered.empty else 0
     price_config = {
         'TDI': (
-            ['pocket price', 'vn_pp', 'apac_pp'], ['red', 'green', 'blue']
+            ['pocket price', 'vn_pp', 'apac_pp'], ['red', 'purple', 'green']
         ) if not is_taiwan else (
-            ['pocket price', 'tw_pp', 'apac_pp'], ['red', 'green', 'blue']
+            ['pocket price', 'tw_pp', 'apac_pp'], ['red', 'purple', 'green']
         ),
         'PMDI': (
             ['pocket price', 'vn_pp', 'seap_pp', 'apac_pp'], ['red', 'green', 'blue', 'purple']

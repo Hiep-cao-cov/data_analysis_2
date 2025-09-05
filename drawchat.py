@@ -49,11 +49,11 @@ def plot_customer_demand(df, customer_name, customer_column, suppliers, year_col
                 name=supplier.capitalize(),
                 text=text_labels,
                 textposition='inside',
-                textfont=dict(size=percentage_label_fontsize),
+                textfont=dict(size=percentage_label_fontsize*1.4),
                 marker=dict(color=px.colors.qualitative.Plotly[suppliers.index(supplier) % len(px.colors.qualitative.Plotly)]),
                 hovertemplate=(
                     '<b>Supplier:</b> ' + supplier.capitalize() + '<br>' +
-                    '<b>Volume:</b> %{y:.0f} mt<br>'
+                    '<b>Volume:</b> %{y:.0f} mt<extra></extra>'
                 )
             ))
     
@@ -644,14 +644,14 @@ def plot_customer_demand_with_price(df, customer_name, customer_column, supplier
             fig.add_trace(go.Bar(
                 x=df_filtered[year_column],
                 y=values,
-                name=f"{supplier.capitalize()} Volume",
+                name=f"{supplier.capitalize()}",
                 text=values+text_labels,  # Show both value and percentage
                 textposition='inside',
-                textfont=dict(size=value_label_fontsize),
+                textfont=dict(size=value_label_fontsize*1.4),
                 marker=dict(color=px.colors.qualitative.Plotly[suppliers.index(supplier) % len(px.colors.qualitative.Plotly)]),
                 hovertemplate=(
                     '<b>Supplier:</b> ' + supplier.capitalize() + '<br>' +
-                    '<b>Volume:</b> %{y:.0f} mt<br>'
+                    '<b>Volume:</b> %{y:.0f} mt<extra></extra>'
                 )
             ))
     
@@ -687,11 +687,11 @@ def plot_customer_demand_with_price(df, customer_name, customer_column, supplier
             yaxis='y2',
             text=df_filtered[price_col].round(2).astype(str),
             textposition='top center',
-            textfont=dict(size=price_annotation_fontsize),
+            textfont=dict(size=price_annotation_fontsize*1.4, color =price_colors[i]),
             line=dict(color=price_colors[i], width=2),
             hovertemplate=(
                 '<b>Year:</b> %{x}<br>' +
-                '<b>Price:</b> %{y:.2f} USD/kg<extra></extra>'
+                '<b>Price:</b> <b>%{y:.2f}</b> USD/kg<extra></extra>'
             )
         ))
     
