@@ -234,7 +234,7 @@ def plot_price_volume(df, customer_name, material, is_taiwan, title_fontsize, ax
     color_map = dict(zip(all_price_columns, price_colors))
     selected_colors = [color_map[col] for col in price_columns]
     try:
-        fig = drawchat.plot_customer_demand_with_price(
+        fig = drawchat.plot_customer_demand_with_price_1(
             df, customer_name, 'customer', SUPPLIERS[material.lower()], 'year',
             (0, max_demand * 2), (0.5, max_price * 1.5), price_columns, selected_colors,
             title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, 
@@ -243,6 +243,14 @@ def plot_price_volume(df, customer_name, material, is_taiwan, title_fontsize, ax
             y_min, y_max, y_demand_min, y_demand_max
         )
         if fig:
+            # NEW: Force custom ranges to override autorange bug
+            if y_demand_min is not None and y_demand_max is not None:
+                fig.update_layout(
+                    yaxis=dict(range=[y_demand_min, y_demand_max], autorange=False),
+                    yaxis3=dict(range=[y_demand_min, y_demand_max], autorange=False)
+                )
+            if y_min is not None and y_max is not None:
+                fig.update_layout(yaxis2=dict(range=[y_min, y_max], autorange=False))
             fig.update_layout(
                 legend=dict(
                     orientation="h",

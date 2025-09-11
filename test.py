@@ -84,7 +84,7 @@ def plot_customer_bubble_centered(df, customer_column, sow_column, ppd_column, v
         else:
             normalized = (sqrt_volume - sqrt_min) / (sqrt_max - sqrt_min)
         
-        min_size = 30 * bubble_scale
+        min_size = 80 * bubble_scale
         max_size = 120 * bubble_scale
         return min_size + (normalized * (max_size - min_size))
     
@@ -93,7 +93,7 @@ def plot_customer_bubble_centered(df, customer_column, sow_column, ppd_column, v
     for _, row in customer_data.iterrows():
         volume = row[volume_column]
         bubble_size = calculate_bubble_size_log(volume, min_volume, max_volume, bubble_scale) if use_log_scaling else calculate_bubble_size_sqrt(volume, min_volume, max_volume, bubble_scale)
-        bubble_sizes.append(bubble_size / 8)  # Adjust for Plotly scaling
+        bubble_sizes.append(bubble_size / 2)  # Adjust for Plotly scaling
     
     # Create the figure
     fig = go.Figure()
@@ -197,7 +197,7 @@ def plot_customer_bubble_centered(df, customer_column, sow_column, ppd_column, v
             gridwidth=1,
             griddash='dot',
             zeroline=True,
-            zerolinecolor='black',
+            zerolinecolor='red',
             zerolinewidth=2,
             range=y_range
         ),
