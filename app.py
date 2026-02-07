@@ -7,6 +7,7 @@ import os
 from eda import load_and_extract_dataframes
 from config import REQUIRED_COLUMNS, SUPPLIERS, CHART_TYPES, COUNTRIES, MATERIALS
 
+#--------------test code starts here----------------#
 def validate_dataframe(df, required_columns, material=None, country=None, chart_type=None, files_uploaded=False):
     """Validate DataFrame has required columns, data types, and valid ranges"""
     if not files_uploaded:
@@ -310,7 +311,7 @@ def plot_bubble_chart(df, customer_name, material, is_taiwan, title_fontsize, ax
         return chart_figure
     except ValueError as e:
         st.error(f"Error generating bubble chart: {str(e)}")
-        return None
+        return None 
 
 def plot_bubble_chart_centered(df, material, title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, bubble_scale, alpha, customer_name_font_size, demand_label_font_size, y_min, y_max, year_filter, min_volume_threshold):
     """Plot centered bubble chart with SOW and PPD axes and legend at bottom"""
