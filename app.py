@@ -200,7 +200,10 @@ def get_demand_range(df, chart_type, customer_name=None):
         st.error(f"Error in get_demand_range: {str(e)}")
         return 0.0, 100.0
 
-def plot_customer_demand(df, customer_name, material, is_taiwan, title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, legend_title_fontsize, percentage_label_fontsize, customer_name_font_size, demand_label_font_size, y_min, y_max):
+def plot_customer_demand(df, customer_name, material, is_taiwan, title_fontsize, 
+                         axis_label_fontsize, tick_fontsize, legend_fontsize, 
+                         legend_title_fontsize, percentage_label_fontsize, 
+                         customer_name_font_size, demand_label_font_size, y_min, y_max):
     """Plot customer demand chart with legend at bottom"""
     if not validate_dataframe(df, REQUIRED_COLUMNS['demand_charts'], material=material, chart_type="Customer Demand", files_uploaded=True):
         return None
@@ -259,7 +262,7 @@ def plot_price_volume(df, customer_name, material, is_taiwan, title_fontsize, ax
     color_map = dict(zip(all_price_columns, price_colors))
     selected_colors = [color_map[col] for col in price_columns]
     try:
-        fig = drawchat.plot_customer_demand_with_price_1(
+        fig = drawchat.plot_customer_demand_with_price(
             df, customer_name, 'customer', SUPPLIERS[material.lower()], 'year',
             (0, max_demand * 2), (0.5, max_price * 1.5), price_columns, selected_colors,
             title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, 
