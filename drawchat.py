@@ -3,178 +3,116 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 
+import plotly.graph_objects as go
+import plotly.express as px
+import pandas as pd
+
 def plot_customer_demand(df, customer_name, customer_column, suppliers, year_column, y_range, 
-                        title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, 
-                        legend_title_fontsize, percentage_label_fontsize, customer_name_font_size, 
-                        demand_label_font_size, y_min=None, y_max=None):
-    """Plot customer demand chart using Plotly with percentage labels and total demand outline"""
-    df_filtered = df[df[customer_column] == customer_name]
+                         title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, 
+                         legend_title_fontsize, percentage_label_fontsize, customer_name_font_size, 
+                         demand_label_font_size, y_min=None, y_max=None):
+    
+    df_filtered = df[df[customer_column] == customer_name].copy()
     if df_filtered.empty:
         raise ValueError(f"No data for customer {customer_name}")
-    
+
+    # --- 1. SORT SUPPLIERS BY TOTAL VOLUME ---
+    # We sum the volume for each supplier across all years to determine the order
+    supplier_totals = {s: df_filtered[s].sum() for s in suppliers if s in df_filtered.columns}
+    # Sort: Smallest total volume first (will be at the bottom of the stack)
+    sorted_suppliers = sorted(supplier_totals.keys(), key=lambda x: supplier_totals[x])
+
     fig = go.Figure()
-    
-    # Calculate total SUPPLY (sum of suppliers) for percentage calculation
-    total_supply_by_year = {}
-    for _, row in df_filtered.iterrows():
-        year = row[year_column]
-        total_supply = row['demand']  # Uses demand column directly
-        total_supply_by_year[year] = total_supply
-    
-    # Add stacked bars for each supplier
-    for supplier in suppliers:
-        if supplier in df_filtered.columns:
-            percentages = []
-            values = []
-            text_labels = []
+    total_supply_by_year = {row[year_column]: row['demand'] for _, row in df_filtered.iterrows()}
+
+    # --- 2. ADD SORTED SUPPLIERS ---
+    for i, supplier in enumerate(sorted_suppliers):
+        values = []
+        text_labels = []
+        
+        for _, row in df_filtered.iterrows():
+            year = row[year_column]
+            value = row[supplier] if pd.notna(row[supplier]) else 0
+            total_supply = total_supply_by_year.get(year, 0)
             
-            for _, row in df_filtered.iterrows():
-                year = row[year_column]
-                value = row[supplier] if pd.notna(row[supplier]) else 0
-                total_supply = total_supply_by_year[year]
-                
-                if total_supply > 0:
-                    percentage = (value / total_supply) * 100
-                    percentages.append(percentage)
-                    values.append(value)
-                    text_labels.append(f"{percentage:.1f}%")
-                else:
-                    percentages.append(0)
-                    values.append(0)
-                    text_labels.append("0%")
-            
-            fig.add_trace(go.Bar(
-                x=df_filtered[year_column],
-                y=values,
-                name=supplier.capitalize(),
-                text=text_labels,
-                textposition='inside',
-                textfont=dict(size=percentage_label_fontsize*1.4),
-                marker=dict(color=px.colors.qualitative.Plotly[suppliers.index(supplier) % len(px.colors.qualitative.Plotly)]),
-                hovertemplate=(
+            if total_supply > 0:
+                percentage = (value / total_supply) * 100
+                values.append(value)
+                text_labels.append(f"{percentage:.1f}%")
+            else:
+                values.append(0)
+                text_labels.append("")
+        
+        fig.add_trace(go.Bar(
+            x=df_filtered[year_column],
+            y=values,
+            name=supplier.capitalize(),
+            text=text_labels,
+            textposition='auto', 
+            cliponaxis=False,
+            # Adjust bar width indirectly via layout bargap, or directly here:
+            width=0.4, # 0.4 makes the bars thinner (default is ~0.8)
+            textfont=dict(size=percentage_label_fontsize, color='black',family='Arial Black'),
+            marker=dict(color=px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)]),
+            hovertemplate=(
                     '<b>Supplier:</b> ' + supplier.capitalize() + '<br>' +
                     '<b>Volume:</b> %{y:.0f} mt<extra></extra>'
-                )
-            ))
-    
-    # Add demand outline bars using secondary y-axis
-    if 'demand' in df_filtered.columns:
-        demand_values = df_filtered['demand'].tolist()
-    else:
-        demand_values = [total_supply_by_year[year] for year in df_filtered[year_column]]
-    
+                ),
+            legendrank=i + 1 
+        ))
+
+    # --- 3. ADD TOTAL DEMAND OUTLINE ---
+    demand_values = df_filtered['demand'].tolist()
     fig.add_trace(go.Bar(
         x=df_filtered[year_column],
         y=demand_values,
         name='Total Demand',
-        marker=dict(
-            color='rgba(0,0,0,0)',  # Transparent fill
-            line=dict(color='red', width=2)  # Thick red outline
-        ),
+        width=0.4, # Match the supplier bar width
+        marker=dict(color='rgba(0,0,0,0)', line=dict(color='red', width=2)),
         text=[f"{val:.0f} mt" for val in demand_values],
         textposition='outside',
-        textfont=dict(size=demand_label_font_size, color='red'),  # Use demand_label_font_size
+        textfont=dict(size=demand_label_font_size+8, color='red'),
+        yaxis='y2',
         hoverinfo='skip',
-        showlegend=True,
-        yaxis='y2'
+        
     ))
-    
-    # Set Y-axis range
-    if y_min is not None and y_max is not None:
-        y_range = [y_min, y_max]
-    else:
-        max_demand = max(demand_values) if demand_values else 0
-        max_supply = max(total_supply_by_year.values()) if total_supply_by_year else 0
-        y_range = [0, max(y_range[1], max_demand * 1.1, max_supply * 1.1)]
-    
+
+    max_val = max(demand_values) if demand_values else 100
+    final_y_range = [y_min if y_min is not None else 0, 
+                     y_max if y_max is not None else max_val * 1.2]
+
+    # --- 4. LAYOUT WITH THINNER BARS & LEFT LEGEND ---
     fig.update_layout(
+        template="plotly_white",
         title=dict(
-            text=f"{customer_name} Volume by Supplier",
-            font=dict(size=customer_name_font_size, family='Arial Black'),  # Use customer_name_font_size
-            x=0.5,
-            xanchor='center'
+            text=f"{customer_name} Volume: Sorted by Size",
+            font=dict(size=customer_name_font_size, family='Arial Black'),
+            x=0.5, xanchor='center'
         ),
-        xaxis=dict(
-            title=dict(text='Year', font=dict(size=axis_label_fontsize)),
-            tickfont=dict(size=tick_fontsize),
-            type='category'
-        ),
-        yaxis=dict(
-            title=dict(text='Volume (mt)', font=dict(size=axis_label_fontsize)),
-            tickfont=dict(size=tick_fontsize),
-            range=y_range
-        ),
-        yaxis2=dict(
-            overlaying='y',
-            side='right',
-            range=y_range,
-            showticklabels=False
-        ),
+        xaxis=dict(type='category', tickfont=dict(size=tick_fontsize)),
+        yaxis=dict(range=final_y_range, tickfont=dict(size=tick_fontsize)),
+        yaxis2=dict(overlaying='y', side='right', range=final_y_range, showticklabels=False),
         barmode='stack',
+        bargap=0.5, # Increases space between year groups (makes bars look thinner)
+        
         legend=dict(
-            title=dict(text='Suppliers', font=dict(size=legend_title_fontsize)),
-            font=dict(size=legend_fontsize)
+            orientation="v",
+            x=-0.3,           
+            xanchor='right',   
+            y=0.5,
+            yanchor='middle',
+            traceorder="reversed", 
+            font=dict(size=legend_fontsize),
+            title=dict(text='Suppliers', font=dict(size=legend_title_fontsize))
         ),
-        hoverlabel=dict(
-            bgcolor="lightblue",
-            bordercolor="darkblue",
-            font=dict(size=16, family="Verdana", color="black")
-        ),  
-        plot_bgcolor='white',
-        paper_bgcolor='white',
-        width=800,
-        height=600
+        margin=dict(l=250, r=50, t=100, b=100), 
+        width=1100, 
+        height=700
     )
+    
     return fig
 
 
-def plot_customer_business_plan_1(df, customer_name, is_taiwan, title_fontsize, axis_label_fontsize, 
-                               tick_fontsize, legend_fontsize, value_label_fontsize):
-    """Plot business plan chart using Plotly"""
-    df_filtered = df[df['customer'] == customer_name]
-    if df_filtered.empty:
-        raise ValueError(f"No data for customer {customer_name}")
-    
-    fig = go.Figure()
-    
-    for col, color in zip(['min', 'base', 'max'], ['blue', 'green', 'red']):
-        fig.add_trace(go.Bar(
-            x=df_filtered['year'],
-            y=df_filtered[col],
-            name=col.capitalize(),
-            text=df_filtered[col].round(0).astype(str),
-            textposition='auto',
-            textfont=dict(size=value_label_fontsize),
-            marker=dict(color=color)
-        ))
-    
-    fig.update_layout(
-        title=dict(
-            text=f"{customer_name} Business Plan",
-            font=dict(size=title_fontsize, family='Arial Black'),
-            x=0.5,
-            xanchor='center'
-        ),
-        xaxis=dict(
-            title=dict(text='Year', font=dict(size=axis_label_fontsize)),
-            tickfont=dict(size=tick_fontsize),
-            type='category'
-        ),
-        yaxis=dict(
-            title=dict(text='Demand (mt)', font=dict(size=axis_label_fontsize)),
-            tickfont=dict(size=tick_fontsize)
-        ),
-        barmode='group',
-        legend=dict(
-            title=dict(text='Plan Type', font=dict(size=legend_fontsize)),
-            font=dict(size=legend_fontsize)
-        ),
-        plot_bgcolor='white',
-        paper_bgcolor='white',
-        width=800,
-        height=600
-    )
-    return fig
 
 def plot_customer_bubble_clean_with_median(df, customer_column, demand_column, price_column, year_filter, bubble_scale, alpha, title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, customer_name_font_size, demand_label_font_size, y_min, y_max, min_demand_threshold=10):
     """Enhanced interactive bubble chart using Plotly with hover information and interactive features"""
@@ -808,8 +746,8 @@ def plot_customer_demand_with_price_1(df, customer_name, customer_column, suppli
             textfont=dict(size=value_label_fontsize*1.4),
             marker=dict(color=px.colors.qualitative.Plotly[0]),
             hovertemplate=(
-                '<b>Supplier:</b> Covestro<br>' +
-                '<b>Volume:</b> %{y:.0f} mt<extra></extra>'
+                'Supplier: <b>Covestro</b><br>' +
+                'Volume  : <b>%{y:.0f}</b> mt<extra></extra>'
             )
         ))
     
@@ -829,7 +767,7 @@ def plot_customer_demand_with_price_1(df, customer_name, customer_column, suppli
         ),
         text=[f"{val:.0f} mt" for val in demand_values],
         textposition='outside',
-        textfont=dict(size=demand_label_font_size, color='red'),
+        textfont=dict(size=demand_label_font_size, color='red',family='Arial Black'),
         hoverinfo='skip',
         showlegend=True,
         yaxis='y3'
@@ -848,8 +786,8 @@ def plot_customer_demand_with_price_1(df, customer_name, customer_column, suppli
             textfont=dict(size=price_annotation_fontsize*1.4, color=price_colors[i]),
             line=dict(color=price_colors[i], width=2),
             hovertemplate=(
-                '<b>Year:</b> %{x}<br>' +
-                '<b>Price:</b> <b>%{y:.2f}</b> USD/kg<extra></extra>'
+                'Year : <b>%{x}</b><br>' +
+                'Price: <b>%{y:.2f}</b> USD/kg<extra></extra>'
             )
         ))
     
@@ -935,7 +873,7 @@ def plot_customer_business_plan(df, customer_name, is_taiwan, title_fontsize, ax
             name=col.capitalize(),
             text=df_filtered[col].round(0).astype(str),
             textposition='inside', # 'inside' often looks better in stacked charts
-            textfont=dict(size=value_label_fontsize, color='white'),
+            textfont=dict(size=value_label_fontsize + 5, color='white',family='Arial Black'),
             marker=dict(color=color)
         ))
     

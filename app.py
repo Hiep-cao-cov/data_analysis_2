@@ -221,11 +221,11 @@ def plot_customer_demand(df, customer_name, material, is_taiwan, title_fontsize,
         if fig:
             fig.update_layout(
                 legend=dict(
-                    orientation="h",
-                    yanchor="top",
-                    y=-0.2,
-                    xanchor="center",
-                    x=0.5,
+                    orientation="v",
+                    yanchor='middle',
+                    y=0.5,
+                    xanchor='right',
+                    x=-0.15,
                     font=dict(size=legend_fontsize)
                 )
             )
