@@ -128,7 +128,7 @@ def plot_customer_demand(df, customer_name, customer_column, suppliers, year_col
     return fig
 
 
-def plot_customer_business_plan(df, customer_name, is_taiwan, title_fontsize, axis_label_fontsize, 
+def plot_customer_business_plan_1(df, customer_name, is_taiwan, title_fontsize, axis_label_fontsize, 
                                tick_fontsize, legend_fontsize, value_label_fontsize):
     """Plot business plan chart using Plotly"""
     df_filtered = df[df['customer'] == customer_name]
@@ -908,6 +908,58 @@ def plot_customer_demand_with_price_1(df, customer_name, customer_column, suppli
             bgcolor="lightblue",
             bordercolor="darkblue",
             font=dict(size=16, family="Verdana", color="black")
+        ),
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        width=800,
+        height=600
+    )
+    return fig
+
+import plotly.graph_objects as go
+
+def plot_customer_business_plan(df, customer_name, is_taiwan, title_fontsize, axis_label_fontsize, 
+                                tick_fontsize, legend_fontsize, value_label_fontsize):
+    """Plot business plan chart using Plotly as a Stacked Bar Chart"""
+    df_filtered = df[df['customer'] == customer_name]
+    if df_filtered.empty:
+        raise ValueError(f"No data for customer {customer_name}")
+    
+    fig = go.Figure()
+    
+    # We keep the same columns and colors
+    for col, color in zip(['min', 'base', 'max'], ['blue', 'green', 'red']):
+        fig.add_trace(go.Bar(
+            x=df_filtered['year'],
+            y=df_filtered[col],
+            name=col.capitalize(),
+            text=df_filtered[col].round(0).astype(str),
+            textposition='inside', # 'inside' often looks better in stacked charts
+            textfont=dict(size=value_label_fontsize, color='white'),
+            marker=dict(color=color)
+        ))
+    
+    fig.update_layout(
+        title=dict(
+            text=f"{customer_name} Business Plan",
+            font=dict(size=title_fontsize, family='Arial Black'),
+            x=0.5,
+            xanchor='center'
+        ),
+        xaxis=dict(
+            title=dict(text='Year', font=dict(size=axis_label_fontsize)),
+            tickfont=dict(size=tick_fontsize),
+            type='category'
+        ),
+        yaxis=dict(
+            title=dict(text='Demand (mt)', font=dict(size=axis_label_fontsize)),
+            tickfont=dict(size=tick_fontsize)
+        ),
+        # CHANGE MADE HERE: group -> stack
+        barmode='stack', 
+        legend=dict(
+            title=dict(text='Plan Type', font=dict(size=legend_fontsize)),
+            font=dict(size=legend_fontsize)
         ),
         plot_bgcolor='white',
         paper_bgcolor='white',

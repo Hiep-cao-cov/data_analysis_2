@@ -27,3 +27,20 @@ CHART_TYPES = [
 # Supported countries and materials
 COUNTRIES = ["Vietnam", "Taiwan"]
 MATERIALS = ["PMDI", "TDI"]
+
+MATERIAL_CONFIG = {
+    'pmdi': {
+        'suppliers': ['covestro', 'tosoh', 'wanhua', 'basf', 'huntsman', 'sabic'],
+        'price_columns': {
+            'Vietnam': ['pocket price', 'vn_pp', 'seap_pp', 'apac_pp'],
+            'Taiwan': ['pocket price', 'tw_pp', 'apac_pp']
+        }
+    },
+    'tdi': {
+        'suppliers': ['covestro', 'wanhua', 'basf', 'mcns', 'hanwha'],
+        'price_columns': {
+            'Vietnam': ['pocket price', 'vn_pp', 'apac_pp'],
+            'Taiwan': ['pocket price', 'tw_pp', 'apac_pp']
+        }
+    }
+}
