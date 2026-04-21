@@ -9,7 +9,7 @@ def load_and_extract_dataframes(country, material, show_upload_section, uploaded
     df_ppd = pd.DataFrame()
     all_uploaded = False
 
-    if show_upload_section and not st.session_state.get('upload_complete', False):
+    if show_upload_section:
         with st.container():
             st.header("📤 Upload CSV Files")
             if material == "PMDI":
@@ -85,7 +85,12 @@ def load_and_extract_dataframes(country, material, show_upload_section, uploaded
             try:
                 uploaded_files[file_key].seek(0)
                 df = pd.read_csv(uploaded_files[file_key], encoding='utf-8')
-                locals()[df_name] = df
+                if df_name == 'df_main':
+                    df_main = df
+                elif df_name == 'df_bp':
+                    df_bp = df
+                elif df_name == 'df_ppd':
+                    df_ppd = df
             except pd.errors.EmptyDataError:
                 st.error(f"Failed to parse {file_key}: File is empty or has no columns.")
             except Exception as e:

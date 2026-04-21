@@ -6,6 +6,7 @@ import io
 import os
 from eda import load_and_extract_dataframes
 from config import REQUIRED_COLUMNS, SUPPLIERS, CHART_TYPES, COUNTRIES, MATERIAL_CONFIG, MATERIALS
+
 # This could live in config.py or at the top of your script
 #========================== Configuration Dictionaries ==========================#
 # ======================== End Configuration Dictionaries =========================#
@@ -93,7 +94,11 @@ def validate_dataframe(df, required_columns, material=None, country=None, chart_
 
 def load_country_data(dataframes, country, material, chart_type):
     """Load data into data_dict from provided DataFrames"""
-    files_uploaded = any(st.session_state.uploaded_files.values())
+    files_uploaded = (
+        any(st.session_state.uploaded_files.values()) or
+        st.session_state.get('find_in_memory', False) or
+        st.session_state.get('upload_complete', False)
+    )
     data_dict = {}
     
     if country == "Vietnam":
@@ -115,7 +120,11 @@ def load_country_data(dataframes, country, material, chart_type):
 @st.cache_data
 def get_dataframe(chart_type, material, data_dict, country):
     """Select appropriate dataframe based on chart type, material, and country"""
-    files_uploaded = any(st.session_state.uploaded_files.values())
+    files_uploaded = (
+        any(st.session_state.uploaded_files.values()) or
+        st.session_state.get('find_in_memory', False) or
+        st.session_state.get('upload_complete', False)
+    )
     if not files_uploaded:
         return pd.DataFrame()
     
@@ -203,7 +212,7 @@ def get_demand_range(df, chart_type, customer_name=None):
 def plot_customer_demand(df, customer_name, material, is_taiwan, title_fontsize, 
                          axis_label_fontsize, tick_fontsize, legend_fontsize, 
                          legend_title_fontsize, percentage_label_fontsize, 
-                         customer_name_font_size, demand_label_font_size, y_min, y_max):
+                         customer_name_font_size, demand_label_font_size, y_min, y_max, demand_power_alpha=1.0):
     """Plot customer demand chart with legend at bottom"""
     if not validate_dataframe(df, REQUIRED_COLUMNS['demand_charts'], material=material, chart_type="Customer Demand", files_uploaded=True):
         return None
@@ -219,7 +228,7 @@ def plot_customer_demand(df, customer_name, material, is_taiwan, title_fontsize,
             df, customer_name, 'customer', available_suppliers, 'year', (0, max_demand * 1.4),
             title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, 
             legend_title_fontsize, percentage_label_fontsize, customer_name_font_size, 
-            demand_label_font_size, y_min, y_max
+            demand_label_font_size, y_min, y_max, demand_power_alpha
         )
         if fig:
             fig.update_layout(
@@ -319,8 +328,16 @@ def plot_bubble_chart(df, customer_name, material, is_taiwan, title_fontsize, ax
         settings_info += f" | Year: {year_filter}"
     st.info(settings_info)
     try:
+        suppliers = SUPPLIERS.get(material.lower(), [])
+        demand_column = 'covestro' if 'covestro' in df_filtered.columns else next(
+            (col for col in suppliers if col in df_filtered.columns),
+            None
+        )
+        if demand_column is None:
+            st.error(f"No valid supplier columns found for {material} bubble chart.")
+            return None
         chart_figure, _, _, _ = drawchat.plot_customer_bubble_clean_with_median(
-            df_filtered, 'customer', 'covestro', 'pocket price', year_filter, bubble_scale, alpha,
+            df_filtered, 'customer', demand_column, 'pocket price', year_filter, bubble_scale, alpha,
             title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize,
             customer_name_font_size, demand_label_font_size, y_min, y_max
         )
@@ -367,9 +384,22 @@ def plot_bubble_chart_centered(df, material, title_fontsize, axis_label_fontsize
     st.info(settings_info)
     try:
         chart_figure = drawchat.plot_customer_bubble_centered(
-            df_filtered, 'customer', 'sow', 'ppd', 'volume', year_filter, bubble_scale, alpha,
-            title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize,
-            customer_name_font_size, demand_label_font_size, min_volume_threshold, y_min, y_max
+            df_filtered,
+            customer_column='customer',
+            sow_column='sow',
+            ppd_column='ppd',
+            volume_column='volume',
+            year_filter=year_filter,
+            bubble_scale=bubble_scale,
+            alpha=alpha,
+            title_fontsize=title_fontsize,
+            axis_label_fontsize=axis_label_fontsize,
+            tick_fontsize=tick_fontsize,
+            customer_name_font_size=customer_name_font_size,
+            volume_label_font_size=demand_label_font_size,
+            min_volume_threshold=min_volume_threshold,
+            y_min=y_min,
+            y_max=y_max
         )
         if chart_figure:
             chart_figure.update_layout(
@@ -409,6 +439,72 @@ def setup_page():
     )
     st.sidebar.title("🎯 Navigation")
 
+def load_data_from_memory(country, material):
+    """Load predefined CSV files from local data folder based on country/material selection."""
+    data_dir = os.path.join(os.path.dirname(__file__), "data")
+    file_map = {
+        ("Vietnam", "PMDI"): {
+            "main": "VN_MDI_FINAL.csv",
+            "bp": "VN_MDI_BP.csv",
+            "ppd": "VN_MDI_PPD.csv"
+        },
+        ("Vietnam", "TDI"): {
+            "main": "VN_TDI_FINAL.csv",
+            "bp": "VN_TDI_BP.csv",
+            "ppd": "VN_TDI_PPD.csv"
+        },
+        ("Taiwan", "TDI"): {
+            "main": "TW_TDI_FINAL.csv",
+            "bp": "TW_TDI_BP.csv",
+            "ppd": "TW_TDI_PPD.csv"
+        }
+    }
+
+    selected = file_map.get((country, material))
+    if not selected:
+        return {}, False
+
+    table_main = 'df_mdi' if material == 'PMDI' else 'df_tdi'
+    table_bp = 'df_mdi_bp' if material == 'PMDI' else 'df_tdi_bp'
+
+    dataframes = {}
+    required_loaded = True
+    for table_key, file_key in [(table_main, "main"), (table_bp, "bp")]:
+        file_path = os.path.join(data_dir, selected[file_key])
+        if not os.path.exists(file_path):
+            st.error(f"Required memory file not found: {selected[file_key]}")
+            required_loaded = False
+            continue
+        try:
+            df = pd.read_csv(file_path, encoding='utf-8')
+            if df.empty:
+                st.error(f"Required memory file is empty: {selected[file_key]}")
+                required_loaded = False
+                continue
+            dataframes[table_key] = df
+        except pd.errors.EmptyDataError:
+            st.error(f"Failed to parse memory file (empty/no columns): {selected[file_key]}")
+            required_loaded = False
+        except Exception as e:
+            st.error(f"Error reading memory file {selected[file_key]}: {str(e)}")
+            required_loaded = False
+
+    # Optional PPD file: load if available, otherwise skip silently.
+    ppd_path = os.path.join(data_dir, selected["ppd"])
+    if os.path.exists(ppd_path):
+        try:
+            ppd_df = pd.read_csv(ppd_path, encoding='utf-8')
+            if not ppd_df.empty:
+                dataframes['df_ppd'] = ppd_df
+            else:
+                st.warning(f"Optional PPD memory file is empty and will be skipped: {selected['ppd']}")
+        except pd.errors.EmptyDataError:
+            st.warning(f"Optional PPD memory file has no columns and will be skipped: {selected['ppd']}")
+        except Exception as e:
+            st.warning(f"Optional PPD memory file could not be read and will be skipped: {selected['ppd']} ({str(e)})")
+
+    return dataframes, required_loaded
+
 def reset_axis_ranges(chart_type, customer_name):
     """Reset all chart settings based on chart type and customer change"""
     if (st.session_state.get('previous_chart_type') != chart_type or 
@@ -428,6 +524,7 @@ def reset_axis_ranges(chart_type, customer_name):
             'y_demand_max': None,
             'bubble_scale': 5.0,
             'bubble_alpha': 0.7,
+            'demand_power_alpha': 1.0,
             'use_custom_y_range': False,
             'use_custom_bubble_y_range': False,
             'use_custom_price_volume_y_range': False,
@@ -438,7 +535,7 @@ def reset_axis_ranges(chart_type, customer_name):
     st.session_state.previous_customer = customer_name
 
 def get_chart_config(chart_type, customer_name_font_size, demand_label_font_size, legend_font_size, 
-                     y_min, y_max, bubble_y_min, bubble_y_max, bubble_scale, bubble_alpha, 
+                     y_min, y_max, bubble_y_min, bubble_y_max, bubble_scale, bubble_alpha, demand_power_alpha,
                      price_volume_y_min, price_volume_y_max, y_demand_min, y_demand_max, **kwargs):
     """
     Return chart configuration dictionary tailored to chart type.
@@ -492,6 +589,7 @@ def get_chart_config(chart_type, customer_name_font_size, demand_label_font_size
         base_config.update({
             'y_min': y_min,
             'y_max': y_max,
+            'demand_power_alpha': demand_power_alpha,
             'legend_title_fontsize': 14,
             'percentage_label_fontsize': 12,
             'customer_name_font_size': customer_name_font_size,
@@ -523,6 +621,7 @@ def main_app(dataframes, country, material, show_upload_section):
             'y_demand_min': None, 'y_demand_max': None,
             'bubble_scale': 5.0,
             'bubble_alpha': 0.7,
+            'demand_power_alpha': 1.0,
             'bubble_year': None,
             'min_volume_threshold': 50,
             'auto_generate_chart': False
@@ -675,6 +774,16 @@ def main_app(dataframes, country, material, show_upload_section):
             st.markdown("##### 🫧 Bubbles")
             st.slider("Size Scale", 1.0, 50.0, value=st.session_state.chart_settings['bubble_scale'], key="s_bub_scale")
             st.slider("Transparency", 0.1, 1.0, value=st.session_state.chart_settings['bubble_alpha'], key="s_bub_alpha")
+            if chart_type == "Customer Demand":
+                st.slider(
+                    "Demand Visual Power",
+                    0.3,
+                    1.0,
+                    value=float(st.session_state.chart_settings.get('demand_power_alpha', 1.0)),
+                    step=0.05,
+                    key="s_demand_power_alpha",
+                    help="1.0 = real scale. Lower values visually enlarge smaller stacks."
+                )
 
         with s3:
             st.markdown("##### 📏 Y-Axis Range")
@@ -703,7 +812,8 @@ def main_app(dataframes, country, material, show_upload_section):
             'customer_name_font_size': st.session_state.s_font_cust,
             'legend_font_size': st.session_state.s_font_leg,
             'bubble_scale': st.session_state.s_bub_scale,
-            'bubble_alpha': st.session_state.s_bub_alpha
+            'bubble_alpha': st.session_state.s_bub_alpha,
+            'demand_power_alpha': st.session_state.get('s_demand_power_alpha', st.session_state.chart_settings.get('demand_power_alpha', 1.0))
         })
 
     # --- 7. STATE CLEANUP ---
@@ -715,6 +825,14 @@ def main():
     country = st.sidebar.selectbox("Select Country", COUNTRIES, key="country_select")
     material_options = ["TDI"] if country == "Taiwan" else MATERIALS
     material = st.sidebar.selectbox("Select Material", material_options, key="material_select")
+    st.sidebar.markdown("### Data Source")
+    data_source = st.sidebar.radio(
+        "Select Data Source",
+        options=["Memory (preloaded files)", "Manual CSV Upload"],
+        key="data_source_mode"
+    )
+    find_in_memory = (data_source == "Memory (preloaded files)")
+    st.session_state.find_in_memory = find_in_memory
     
     # Initialize session state for uploaded files
     if 'uploaded_files' not in st.session_state:
@@ -725,6 +843,22 @@ def main():
         }
     if 'upload_complete' not in st.session_state:
         st.session_state.upload_complete = False
+    if 'chart_settings' not in st.session_state:
+        st.session_state.chart_settings = {
+            'customer_name_font_size': 12,
+            'demand_label_font_size': 14,
+            'legend_font_size': 12,
+            'y_min': None, 'y_max': None,
+            'bubble_y_min': None, 'bubble_y_max': None,
+            'price_volume_y_min': None, 'price_volume_y_max': None,
+            'y_demand_min': None, 'y_demand_max': None,
+            'bubble_scale': 5.0,
+            'bubble_alpha': 0.7,
+            'demand_power_alpha': 1.0,
+            'bubble_year': None,
+            'min_volume_threshold': 50,
+            'auto_generate_chart': False
+        }
     
     # Reset uploaded files if country or material changes
     if (st.session_state.get('previous_country_main') != country or 
@@ -739,42 +873,52 @@ def main():
     st.session_state.previous_country_main = country
     st.session_state.previous_material_main = material
     
-    # Sidebar toggle for upload section
-    show_upload_section = st.sidebar.checkbox("Show CSV Upload Section", value=not st.session_state.upload_complete, key="show_upload_section")
-    
-    # Load data from uploaded files
-    df_main, df_bp, df_ppd, all_uploaded = load_and_extract_dataframes(country, material, show_upload_section, st.session_state.uploaded_files)
-    
-    # Populate dataframes from uploaded files
+    # Upload section visibility follows selected data source mode.
+    show_upload_section = (data_source == "Manual CSV Upload")
+
     dataframes = {}
-    for file_key, file_name in [('main_file', 'df_mdi' if material == 'PMDI' else 'df_tdi'),
-                                ('bp_file', 'df_mdi_bp' if material == 'PMDI' else 'df_tdi_bp'),
-                                ('ppd_file', 'df_ppd')]:
-        if st.session_state.uploaded_files[file_key]:
-            try:
-                file_obj = st.session_state.uploaded_files[file_key]
-                file_obj.seek(0)
-                if file_obj.size == 0:
-                    st.error(f"Uploaded file for {file_name} is empty. Please upload a valid CSV file.")
-                    continue
-                df = pd.read_csv(file_obj, encoding='utf-8')
-                if df.empty:
-                    st.error(f"Uploaded file for {file_name} contains no data. Please upload a valid CSV file.")
-                    continue
-                dataframes[file_name] = df
-            except pd.errors.EmptyDataError:
-                st.error(f"Failed to parse {file_name}: File is empty or has no columns. Please upload a valid CSV file.")
-            except Exception as e:
-                st.error(f"Error reading {file_name}: {str(e)}. Please ensure the file is a valid CSV.")
-    
-    # Update upload complete status and dataframes
-    required_keys = ['df_mdi' if material == 'PMDI' else 'df_tdi', 
-                     'df_mdi_bp' if material == 'PMDI' else 'df_tdi_bp', 
-                     'df_ppd']
-    if all(key in dataframes and not dataframes[key].empty for key in required_keys):
-        st.session_state.upload_complete = True
-        st.session_state.dataframes = {k: v.copy() for k, v in dataframes.items()}
-        st.session_state.chart_settings['auto_generate_chart'] = True
+    all_uploaded = False
+
+    if find_in_memory:
+        dataframes, all_uploaded = load_data_from_memory(country, material)
+        if all_uploaded:
+            st.session_state.upload_complete = True
+            st.session_state.dataframes = {k: v.copy() for k, v in dataframes.items()}
+            st.session_state.chart_settings['auto_generate_chart'] = True
+            st.success("Loaded data from memory files successfully.")
+    else:
+        # Load data from uploaded files
+        _, _, _, all_uploaded = load_and_extract_dataframes(country, material, show_upload_section, st.session_state.uploaded_files)
+
+        # Populate dataframes from uploaded files
+        for file_key, file_name in [('main_file', 'df_mdi' if material == 'PMDI' else 'df_tdi'),
+                                    ('bp_file', 'df_mdi_bp' if material == 'PMDI' else 'df_tdi_bp'),
+                                    ('ppd_file', 'df_ppd')]:
+            if st.session_state.uploaded_files[file_key]:
+                try:
+                    file_obj = st.session_state.uploaded_files[file_key]
+                    file_obj.seek(0)
+                    if file_obj.size == 0:
+                        st.error(f"Uploaded file for {file_name} is empty. Please upload a valid CSV file.")
+                        continue
+                    df = pd.read_csv(file_obj, encoding='utf-8')
+                    if df.empty:
+                        st.error(f"Uploaded file for {file_name} contains no data. Please upload a valid CSV file.")
+                        continue
+                    dataframes[file_name] = df
+                except pd.errors.EmptyDataError:
+                    st.error(f"Failed to parse {file_name}: File is empty or has no columns. Please upload a valid CSV file.")
+                except Exception as e:
+                    st.error(f"Error reading {file_name}: {str(e)}. Please ensure the file is a valid CSV.")
+
+        # Update upload complete status and dataframes
+        required_keys = ['df_mdi' if material == 'PMDI' else 'df_tdi',
+                         'df_mdi_bp' if material == 'PMDI' else 'df_tdi_bp',
+                         'df_ppd']
+        if all(key in dataframes and not dataframes[key].empty for key in required_keys):
+            st.session_state.upload_complete = True
+            st.session_state.dataframes = {k: v.copy() for k, v in dataframes.items()}
+            st.session_state.chart_settings['auto_generate_chart'] = True
     
     # Always call main_app to ensure UI renders
     if dataframes and all_uploaded:
