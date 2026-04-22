@@ -60,8 +60,8 @@ def plot_customer_demand(df, customer_name, customer_column, suppliers, year_col
             text=text_labels,
             textposition='auto', 
             cliponaxis=False,
-            # Adjust bar width indirectly via layout bargap, or directly here:
-            width=0.4, # 0.4 makes the bars thinner (default is ~0.8)
+            # Make bars wider for better readability.
+            width=0.7,
             textfont=dict(size=percentage_label_fontsize, color='black',family='Arial Black'),
             marker=dict(color=px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)]),
             customdata=real_values,
@@ -75,11 +75,15 @@ def plot_customer_demand(df, customer_name, customer_column, suppliers, year_col
     # --- 3. ADD TOTAL DEMAND OUTLINE ---
     demand_values = df_filtered['demand'].tolist()
     demand_values_scaled = [scaled_total_by_year.get(year, 0.0) for year in df_filtered[year_column].tolist()]
+    # Special rule: the last column's Total Demand uses the original demand column
+    # (not the summed supplier stacks).
+    if demand_values_scaled:
+        demand_values_scaled[-1] = np.power(max(demand_values[-1], 0), alpha)
     fig.add_trace(go.Bar(
         x=df_filtered[year_column],
         y=demand_values_scaled,
         name='Total Demand',
-        width=0.4, # Match the supplier bar width
+        width=0.7, # Match the supplier bar width
         marker=dict(color='rgba(0,0,0,0)', line=dict(color='red', width=2)),
         text=[f"{val:.0f} mt" for val in demand_values],
         textposition='outside',
@@ -104,8 +108,8 @@ def plot_customer_demand(df, customer_name, customer_column, suppliers, year_col
     fig.update_layout(
         template="plotly_white",
         title=dict(
-            text=f"{customer_name} Volume: Sorted by Size{title_suffix}",
-            font=dict(size=customer_name_font_size, family='Arial Black'),
+            text=f"{customer_name} Volume Demand",
+            font=dict(size=title_fontsize, family='Arial Black'),
             x=0.5, xanchor='center'
         ),
         xaxis=dict(type='category', tickfont=dict(size=tick_fontsize + 3, family='Arial Black')),
@@ -116,19 +120,19 @@ def plot_customer_demand(df, customer_name, customer_column, suppliers, year_col
         ),
         yaxis2=dict(overlaying='y', side='right', range=final_y_range, showticklabels=False),
         barmode='stack',
-        bargap=0.5, # Increases space between year groups (makes bars look thinner)
+        bargap=0.2, # Smaller gap to make bars look wider
         
         legend=dict(
             orientation="v",
-            x=-0.3,           
-            xanchor='right',   
-            y=0.5,
-            yanchor='middle',
+            x=1.02,
+            xanchor='left',   
+            y=0.99,
+            yanchor='top',
             traceorder="reversed", 
             font=dict(size=legend_fontsize),
             title=dict(text='Suppliers', font=dict(size=legend_title_fontsize))
         ),
-        margin=dict(l=250, r=50, t=100, b=100), 
+        margin=dict(l=90, r=170, t=100, b=100), 
         width=1100, 
         height=700
     )
@@ -139,7 +143,14 @@ def plot_customer_demand(df, customer_name, customer_column, suppliers, year_col
 
 def plot_customer_bubble_clean_with_median(df, customer_column, demand_column, price_column, year_filter, bubble_scale, alpha, title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, customer_name_font_size, demand_label_font_size, y_min, y_max, min_demand_threshold=10):
     """Enhanced interactive bubble chart using Plotly with hover information and interactive features"""
-    df_filtered = df[df['year'] == year_filter].copy() if year_filter else df.copy()
+    if 'year' in df.columns:
+        if year_filter is not None:
+            df_filtered = filter_dataframe_by_year(df, year_filter)
+        else:
+            ymx = _series_calendar_year(df['year']).dropna()
+            df_filtered = filter_dataframe_by_year(df, int(ymx.max())) if not ymx.empty else df.iloc[0:0].copy()
+    else:
+        df_filtered = df.copy()
     
     customer_data = df_filtered.groupby(customer_column).agg({
         demand_column: 'sum',
@@ -159,7 +170,15 @@ def plot_customer_bubble_clean_with_median(df, customer_column, demand_column, p
     avg_price = customer_data[price_column].mean()
     median_price = customer_data[price_column].median()
     customer_data = customer_data.sort_values(price_column, ascending=False)
-    customer_data['rank'] = customer_data[demand_column].rank(ascending=False, method='dense').astype(int)
+    # Unique hover order 1..n by demand (dense rank gave duplicate numbers when volumes tied).
+    _demand_order = customer_data.sort_values(
+        [demand_column, customer_column],
+        ascending=[False, True],
+        kind="mergesort",
+    )
+    customer_data["rank"] = pd.Series(
+        range(1, len(_demand_order) + 1), index=_demand_order.index
+    )
     
     n_customers = len(customer_data)
     
@@ -221,7 +240,7 @@ def plot_customer_bubble_clean_with_median(df, customer_column, demand_column, p
     # Create the figure
     fig = go.Figure()
     
-    # Show customer labels only for top-volume accounts to reduce visual clutter.
+    # Customer names under bubbles: only top-demand accounts to reduce clutter.
     top_label_count = min(12, n_customers)
     top_label_customers = set(
         customer_data.nlargest(top_label_count, demand_column)[customer_column].astype(str).tolist()
@@ -230,6 +249,7 @@ def plot_customer_bubble_clean_with_median(df, customer_column, demand_column, p
         name if str(name) in top_label_customers else ""
         for name in customer_data[customer_column]
     ]
+    demand_center_text = [f"{d:.0f}" for d in customer_data[demand_column]]
 
     # Add bubble scatter plot
     fig.add_trace(go.Scatter(
@@ -265,10 +285,7 @@ def plot_customer_bubble_clean_with_median(df, customer_column, demand_column, p
         x=list(range(n_customers)),
         y=customer_data[price_column],
         mode='text',
-        text=[
-            f'{demand:.0f}' if str(name) in top_label_customers else ""
-            for name, demand in zip(customer_data[customer_column], customer_data[demand_column])
-        ],
+        text=demand_center_text,
         textfont=dict(
             size=demand_label_font_size,
             color='black',
@@ -405,30 +422,218 @@ def plot_customer_bubble_clean_with_median(df, customer_column, demand_column, p
     
     return fig, avg_price, median_price, customer_data
 
-def plot_customer_bubble_centered(df, customer_column, sow_column, ppd_column, volume_column, year_filter, bubble_scale=1.0, alpha=0.6, 
-                                 title_fontsize=20, axis_label_fontsize=16, tick_fontsize=12, customer_name_font_size=12, 
-                                 volume_label_font_size=10, min_volume_threshold=10, y_min=None, y_max=None, material=None):
-    """Enhanced interactive bubble chart using Plotly with centered axes (sow=50, ppd=0)"""
-    df_filtered = df[df['year'] == year_filter].copy() if year_filter else df.copy()
-    
-    customer_data = df_filtered.groupby(customer_column).agg({
+
+def _series_calendar_year(s: pd.Series) -> pd.Series:
+    """Integer calendar year from a ``year`` column (datetimes or numeric/strings)."""
+    if pd.api.types.is_datetime64_any_dtype(s):
+        return s.dt.year.astype('Int64')
+    x = pd.to_numeric(s, errors='coerce')
+    return np.round(x).astype('Int64')
+
+
+def filter_dataframe_by_year(df, year_filter):
+    """Rows for one calendar year only (never mix years in the same frame)."""
+    if df is None or df.empty:
+        return df.copy() if df is not None else pd.DataFrame()
+    if 'year' not in df.columns:
+        return df.copy()
+    y_tgt = pd.to_numeric(year_filter, errors='coerce')
+    if pd.isna(y_tgt):
+        return df.iloc[0:0].copy()
+    y_tgt_i = int(round(float(y_tgt)))
+    y_col = _series_calendar_year(df['year'])
+    return df.loc[y_col == y_tgt_i].copy()
+
+
+def _filtered_df_centered_bubble_source(df, year_filter):
+    """Rows for one calendar year in **original row order** (CSV order), before groupby."""
+    if df is None or df.empty:
+        return pd.DataFrame()
+    if 'year' not in df.columns:
+        df_filtered = df.copy()
+    elif year_filter is not None:
+        df_filtered = filter_dataframe_by_year(df, year_filter)
+    else:
+        y_cal = _series_calendar_year(df['year'])
+        if y_cal.dropna().empty:
+            return pd.DataFrame()
+        y_default = int(y_cal.max())
+        df_filtered = df.loc[y_cal == y_default].copy()
+    if df_filtered.empty:
+        return pd.DataFrame()
+    if 'year' in df_filtered.columns:
+        y_uni = _series_calendar_year(df_filtered['year']).dropna().unique()
+        if len(y_uni) > 1 and year_filter is not None:
+            yt = int(round(float(pd.to_numeric(year_filter, errors='coerce'))))
+            y_cal = _series_calendar_year(df_filtered['year'])
+            df_filtered = df_filtered.loc[y_cal == yt].copy()
+        elif len(y_uni) > 1:
+            y_cal = _series_calendar_year(df_filtered['year'])
+            y_keep = int(y_cal.max())
+            df_filtered = df_filtered.loc[y_cal == y_keep].copy()
+    if df_filtered.empty:
+        return pd.DataFrame()
+    return df_filtered
+
+
+def _csv_first_appearance_customer_order(df_filtered, customer_column='customer'):
+    """Customer names in order of first row appearance in ``df_filtered`` (file/CSV order)."""
+    if df_filtered is None or df_filtered.empty or customer_column not in df_filtered.columns:
+        return []
+    seen = set()
+    order = []
+    for val in df_filtered[customer_column].tolist():
+        if pd.isna(val):
+            continue
+        c = str(val).strip()
+        if not c or c in seen:
+            continue
+        seen.add(c)
+        order.append(c)
+    return order
+
+
+def _aggregate_customers_centered_bubble(
+    df,
+    customer_column='customer',
+    sow_column='sow',
+    ppd_column='ppd',
+    volume_column='volume',
+    year_filter=None,
+):
+    """Per-customer SOW/PPD means and volume sum for the centered bubble chart."""
+    df_filtered = _filtered_df_centered_bubble_source(df, year_filter)
+    if df_filtered.empty:
+        return pd.DataFrame()
+    return df_filtered.groupby(customer_column).agg({
         sow_column: 'mean',
         ppd_column: 'mean',
         volume_column: 'sum'
     }).reset_index().dropna(subset=[sow_column, ppd_column, volume_column])
-    
+
+
+def get_centered_bubble_volume_bounds(
+    df,
+    customer_column='customer',
+    sow_column='sow',
+    ppd_column='ppd',
+    volume_column='volume',
+    year_filter=None,
+):
+    """Min/max aggregated customer volume in the dataset (for range slider limits)."""
+    customer_data = _aggregate_customers_centered_bubble(
+        df, customer_column, sow_column, ppd_column, volume_column, year_filter
+    )
+    if customer_data.empty:
+        return 0.0, 1.0
+    lo = float(customer_data[volume_column].min())
+    hi = float(customer_data[volume_column].max())
+    if lo > hi:
+        lo, hi = hi, lo
+    if abs(hi - lo) < 1e-9:
+        hi = lo + 1.0
+    return lo, hi
+
+
+def list_customers_for_centered_bubble(
+    df,
+    customer_column='customer',
+    sow_column='sow',
+    ppd_column='ppd',
+    volume_column='volume',
+    year_filter=None,
+    volume_min=0.0,
+    volume_max=None,
+):
+    """Customer names in **CSV / file row order** (first appearance that year), after volume range — same as hover rank."""
+    if volume_max is None:
+        volume_max = float('inf')
+    if df is None or df.empty:
+        return []
+    df_src = _filtered_df_centered_bubble_source(df, year_filter)
+    csv_order = _csv_first_appearance_customer_order(df_src, customer_column)
+    customer_data = _aggregate_customers_centered_bubble(
+        df, customer_column, sow_column, ppd_column, volume_column, year_filter
+    )
+    if customer_data.empty:
+        return []
+    customer_data = customer_data[
+        (customer_data[volume_column] >= volume_min) &
+        (customer_data[volume_column] <= volume_max)
+    ]
+    if customer_data.empty:
+        return []
+    valid = set(customer_data[customer_column].astype(str).str.strip())
+    ordered = [c for c in csv_order if c in valid]
+    ordered.extend(sorted(valid - set(ordered)))
+    return ordered
+
+
+def plot_customer_bubble_centered(df, customer_column, sow_column, ppd_column, volume_column, year_filter, bubble_scale=1.0, alpha=0.6, 
+                                 title_fontsize=20, axis_label_fontsize=16, tick_fontsize=12, customer_name_font_size=12, 
+                                 volume_label_font_size=10, volume_min=0.0, volume_max=None, y_min=None, y_max=None, material=None,
+                                 exclude_customers=None):
+    """Enhanced interactive bubble chart using Plotly with centered axes (sow=50, ppd=0)"""
+    if volume_max is None:
+        raise ValueError("volume_max is required for the centered bubble chart")
+    if 'year' in df.columns:
+        if year_filter is not None:
+            df = filter_dataframe_by_year(df, year_filter)
+        else:
+            ymx = _series_calendar_year(df['year']).dropna()
+            if not ymx.empty:
+                y_sel = int(ymx.max())
+                df = filter_dataframe_by_year(df, y_sel)
+                year_filter = y_sel
+    customer_data = _aggregate_customers_centered_bubble(
+        df, customer_column, sow_column, ppd_column, volume_column, year_filter
+    )
+
     if customer_data.empty:
         raise ValueError("No valid data after filtering and aggregation")
-    
-    customer_data = customer_data[customer_data[volume_column] > min_volume_threshold].copy()
-    
+
+    # Marker sizes use the full market for this year (min→smallest bubble, max→largest). The volume
+    # slider and “hide customer” only change who is drawn, not the size scale — so 600 vs 660 mt
+    # stay close unless the whole dataset spans a wide volume range.
+    ref_min = float(customer_data[volume_column].min())
+    ref_max = float(customer_data[volume_column].max())
+
+    customer_data = customer_data[
+        (customer_data[volume_column] >= volume_min) &
+        (customer_data[volume_column] <= volume_max)
+    ].copy()
+
     if customer_data.empty:
-        raise ValueError(f"No customers with volume > {min_volume_threshold} after filtering")
+        raise ValueError(
+            f"No customers in volume range {volume_min:g}–{volume_max:g} mt (after aggregation)."
+        )
+
+    # Rank 1..n in **CSV row order** (first appearance in file for this year), same as the right-hand list.
+    # Assign before exclude_customers so hover numbers stay stable when some bubbles are hidden.
+    csv_order = _csv_first_appearance_customer_order(df, customer_column)
+    valid = set(customer_data[customer_column].astype(str).str.strip())
+    ordered_keys = [c for c in csv_order if c in valid]
+    ordered_keys.extend(sorted(valid - set(ordered_keys)))
+    customer_data = (
+        customer_data.assign(_k=customer_data[customer_column].astype(str).str.strip())
+        .set_index("_k")
+        .loc[ordered_keys]
+        .reset_index(drop=True)
+    )
+    customer_data["rank"] = np.arange(1, len(customer_data) + 1)
+
+    if exclude_customers:
+        ex = {str(x) for x in exclude_customers}
+        customer_data = customer_data[~customer_data[customer_column].astype(str).isin(ex)].copy()
+    if customer_data.empty:
+        raise ValueError(
+            "No bubbles to show — every customer is hidden or filtered out. "
+            "Show at least one customer in the list on the right."
+        )
     
-    print(f"Filtered out customers with volume <= {min_volume_threshold}. Remaining customers: {len(customer_data)}")
+    print(f"Volume filter {volume_min:g}–{volume_max:g} mt. Customers shown: {len(customer_data)}")
     
     customer_data['sow_shifted'] = customer_data[sow_column] - 50
-    customer_data['rank'] = customer_data[volume_column].rank(ascending=False, method='dense').astype(int)
     
     n_customers = len(customer_data)
     
@@ -441,10 +646,6 @@ def plot_customer_bubble_centered(df, customer_column, sow_column, ppd_column, v
     else:
         colors = px.colors.qualitative.Set3 * ((n_customers // len(px.colors.qualitative.Set3)) + 1)
         colors = colors[:n_customers]
-    
-    # Bubble size calculation
-    min_volume = customer_data[volume_column].min()
-    max_volume = customer_data[volume_column].max()
     
     def calculate_bubble_size_log(volume, min_volume, max_volume, bubble_scale):
         if volume <= 0:
@@ -482,13 +683,17 @@ def plot_customer_bubble_centered(df, customer_column, sow_column, ppd_column, v
     bubble_sizes = []
     for _, row in customer_data.iterrows():
         volume = row[volume_column]
-        bubble_size = calculate_bubble_size_log(volume, min_volume, max_volume, bubble_scale) if use_log_scaling else calculate_bubble_size_sqrt(volume, min_volume, max_volume, bubble_scale)
+        bubble_size = (
+            calculate_bubble_size_log(volume, ref_min, ref_max, bubble_scale)
+            if use_log_scaling
+            else calculate_bubble_size_sqrt(volume, ref_min, ref_max, bubble_scale)
+        )
         bubble_sizes.append(bubble_size / 8)
     
     # Create the figure
     fig = go.Figure()
 
-    # Show customer labels only for top-volume accounts to reduce clutter.
+    # Customer names above bubbles: only top-volume accounts (keeps the top of the chart readable).
     top_label_count = min(12, n_customers)
     top_label_customers = set(
         customer_data.nlargest(top_label_count, volume_column)[customer_column].astype(str).tolist()
@@ -497,6 +702,8 @@ def plot_customer_bubble_centered(df, customer_column, sow_column, ppd_column, v
         name if str(name) in top_label_customers else ""
         for name in customer_data[customer_column]
     ]
+    # Volume inside every bubble (previously only the top 12 showed a center number).
+    volume_center_text = [f"{v:.0f}" for v in customer_data[volume_column]]
     
     # Add bubble scatter plot
     fig.add_trace(go.Scatter(
@@ -534,10 +741,7 @@ def plot_customer_bubble_centered(df, customer_column, sow_column, ppd_column, v
         x=customer_data['sow_shifted'],
         y=customer_data[ppd_column],
         mode='text',
-        text=[
-            f'{volume:.0f}' if str(name) in top_label_customers else ""
-            for name, volume in zip(customer_data[customer_column], customer_data[volume_column])
-        ],
+        text=volume_center_text,
         textfont=dict(
             size=volume_label_font_size,
             color='black',
@@ -563,18 +767,18 @@ def plot_customer_bubble_centered(df, customer_column, sow_column, ppd_column, v
     
     # Customize layout
     scaling_method = "Log" if use_log_scaling else "Sqrt"
-    title_text = f'Customer Bubble Chart {year_filter} (Min Volume: {min_volume_threshold})'
+    title_text = f'Customer Bubble Chart {year_filter} (Volume: {volume_min:.0f}–{volume_max:.0f} mt)'
     if y_min is not None and y_max is not None:
         title_text += f', Y-range: {y_min:.1f}-{y_max:.1f}'
     
-    # Add simple bubble size legend (small / medium / large volume)
+    # Add simple bubble size legend (small / medium / large volume) — same ref as markers
     legend_volumes = [
-        float(min_volume),
-        float((min_volume + max_volume) / 2),
-        float(max_volume)
+        ref_min,
+        float((ref_min + ref_max) / 2),
+        ref_max,
     ]
     legend_sizes = [
-        calculate_bubble_size_log(v, min_volume, max_volume, bubble_scale) / 8
+        calculate_bubble_size_log(v, ref_min, ref_max, bubble_scale) / 8
         for v in legend_volumes
     ]
     legend_labels = ['Small', 'Medium', 'Large']
@@ -808,7 +1012,7 @@ def plot_customer_demand_with_price(df, customer_name, customer_column, supplier
     fig.update_layout(
         title=dict(
             text=f"{customer_name} Demand and Price",
-            font=dict(size=customer_name_font_size, family='Arial Black'),
+            font=dict(size=title_fontsize, family='Arial Black'),
             x=0.5,
             xanchor='center'
         ),

@@ -1,3 +1,4 @@
+import hashlib
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
@@ -10,6 +11,35 @@ from config import REQUIRED_COLUMNS, SUPPLIERS, CHART_TYPES, COUNTRIES, MATERIAL
 # This could live in config.py or at the top of your script
 #========================== Configuration Dictionaries ==========================#
 # ======================== End Configuration Dictionaries =========================#
+
+def normalize_dataframe_columns(df):
+    """Strip and lowercase headers so files match config (e.g. ``Year``, `` sow `` → ``year``, ``sow``)."""
+    if df is None or df.empty:
+        return
+    df.columns = pd.Index([str(c).strip().lower() for c in df.columns])
+
+
+def _normalize_bubble_year(y):
+    """Calendar year as int for filters, widget keys, and selectbox values (handles float/numpy scalars)."""
+    if y is None:
+        return None
+    v = pd.to_numeric(y, errors="coerce")
+    if pd.isna(v):
+        return None
+    return int(round(float(v)))
+
+
+def _coerce_bubble_metric_columns(df: pd.DataFrame, cols: tuple) -> None:
+    """Parse year / sow / ppd / volume from messy CSV (spaces, comma decimals, %, any cell dtype)."""
+    for col in cols:
+        if col not in df.columns:
+            continue
+        t = df[col].astype(str).str.strip()
+        t = t.where(~t.str.lower().isin(['nan', 'nat', 'none', '<na>']), other='')
+        t = t.str.replace(',', '.', regex=False)
+        t = t.str.replace('%', '', regex=False)
+        df[col] = pd.to_numeric(t, errors='coerce')
+
 
 def validate_dataframe(df, required_columns, material=None, country=None, chart_type=None, files_uploaded=False):
     """
@@ -28,14 +58,19 @@ def validate_dataframe(df, required_columns, material=None, country=None, chart_
         return False  # Silently return False if user hasn't uploaded files yet
     
     if df is None or df.empty:
-        st.error(f"The data for {chart_type} is empty or was not loaded correctly.")
         return False
+
+    normalize_dataframe_columns(df)
     
     # 2. Structural Validation
     missing_cols = [col for col in required_columns if col not in df.columns]
     if missing_cols:
         st.error(f"Missing required columns: {', '.join(missing_cols)}")
         return False
+
+    # PPD / centered bubble: coerce metrics (handles object, string, category; comma decimals; stray %)
+    if chart_type == "Customer Bubble Chart (Centered)":
+        _coerce_bubble_metric_columns(df, ('year', 'sow', 'ppd', 'volume'))
 
     # 3. Dynamic Config Lookup (using MATERIAL_CONFIG)
     mat_key = material.lower() if material else None
@@ -89,8 +124,8 @@ def validate_dataframe(df, required_columns, material=None, country=None, chart_
     return True
 
 #--------------test code starts here----------------#
-
-@st.cache_data
+# Note: load_country_data / get_dataframe are not @st.cache_data — they use session_state and
+# mutable DataFrames; caching returned stale empty frames after upload or in-memory load.
 
 def load_country_data(dataframes, country, material, chart_type):
     """Load data into data_dict from provided DataFrames"""
@@ -117,7 +152,7 @@ def load_country_data(dataframes, country, material, chart_type):
     
     return data_dict
 
-@st.cache_data
+
 def get_dataframe(chart_type, material, data_dict, country):
     """Select appropriate dataframe based on chart type, material, and country"""
     files_uploaded = (
@@ -141,14 +176,17 @@ def get_dataframe(chart_type, material, data_dict, country):
     
     # Logic Change: If the key is missing from data_dict, it means that specific file wasn't uploaded
     if key not in data_dict or data_dict[key].empty:
-        # Check if the specific file for this chart was actually uploaded
-        expected_file_label = "Business Plan" if "bp" in (key or "") else "Main Data"
-        st.info(f"Please upload the **{expected_file_label}** CSV to view the {chart_type}.")
+        if chart_type == "Customer Bubble Chart (Centered)":
+            st.info("Load or upload the **PPD** CSV for this country/material (e.g. VN_TDI_PPD.csv). Validation must pass: columns **customer, year, sow, ppd, volume** with numeric values and no blanks.")
+        elif "bp" in (key or ""):
+            st.info(f"Please upload the **Business Plan** CSV to view the {chart_type}.")
+        else:
+            st.info(f"Please upload the **Main Data** CSV to view the {chart_type}.")
         return pd.DataFrame()
         
     return data_dict[key]
 
-@st.cache_data
+
 def get_price_range(df, chart_type, material, country, customer_name=None, selected_price_columns=None):
     """Get the price range from dataframe for Y-axis slider"""
     if df.empty:
@@ -181,7 +219,7 @@ def get_price_range(df, chart_type, material, country, customer_name=None, selec
         st.error(f"Error in get_price_range: {str(e)}")
         return 0.0, 100.0
 
-@st.cache_data
+
 def get_demand_range(df, chart_type, customer_name=None):
     """Get the demand/value range for Y-axis slider"""
     if df.empty:
@@ -234,10 +272,10 @@ def plot_customer_demand(df, customer_name, material, is_taiwan, title_fontsize,
             fig.update_layout(
                 legend=dict(
                     orientation="v",
-                    yanchor='middle',
-                    y=0.5,
-                    xanchor='right',
-                    x=-0.15,
+                    yanchor='top',
+                    y=0.99,
+                    xanchor='left',
+                    x=1.02,
                     font=dict(size=legend_fontsize)
                 )
             )
@@ -310,14 +348,27 @@ def plot_bubble_chart(df, customer_name, material, is_taiwan, title_fontsize, ax
     if 'year' not in df.columns and year_filter is not None:
         st.warning("Year column not found. Ignoring year filter.")
         year_filter = None
-    if year_filter is not None and 'year' in df.columns and not df[df['year'] == year_filter].empty:
-        df_filtered = df[df['year'] == year_filter]
-    else:
-        if year_filter is not None and 'year' in df.columns:
+    if year_filter is not None and 'year' in df.columns:
+        df_try = drawchat.filter_dataframe_by_year(df, year_filter)
+        if not df_try.empty:
+            df_filtered = df_try
+        else:
             st.warning(f"No data available for year {year_filter}. Defaulting to first available year.")
-            years = sorted(df['year'].unique())
+            years = sorted(
+                df['year'].dropna().unique(),
+                key=lambda x: pd.to_numeric(x, errors='coerce'),
+            )
             year_filter = years[0] if years else None
             st.session_state.chart_settings['bubble_year'] = year_filter
+            df_filtered = drawchat.filter_dataframe_by_year(df, year_filter) if year_filter is not None else df
+    elif 'year' in df.columns:
+        y_cal = drawchat._series_calendar_year(df['year']).dropna()
+        if not y_cal.empty:
+            year_filter = int(y_cal.max())
+            df_filtered = drawchat.filter_dataframe_by_year(df, year_filter)
+        else:
+            df_filtered = df
+    else:
         df_filtered = df
     settings_info = f"📊 Bubble Scale: {bubble_scale:.1f} | Transparency: {alpha:.1f} | "
     settings_info += f"Customer Name Font Size: {customer_name_font_size} | "
@@ -357,26 +408,46 @@ def plot_bubble_chart(df, customer_name, material, is_taiwan, title_fontsize, ax
         st.error(f"Error generating bubble chart: {str(e)}")
         return None 
 
-def plot_bubble_chart_centered(df, material, title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, bubble_scale, alpha, customer_name_font_size, demand_label_font_size, y_min, y_max, year_filter, min_volume_threshold):
+def plot_bubble_chart_centered(df, material, title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, bubble_scale, alpha, customer_name_font_size, demand_label_font_size, y_min, y_max, year_filter, volume_min, volume_max, hidden_customers=None):
     """Plot centered bubble chart with SOW and PPD axes and legend at bottom"""
+    if df is None or df.empty:
+        st.error(
+            "No PPD data is loaded for Customer Bubble Chart (Centered). "
+            "Upload the PPD CSV or load from Memory (e.g. VN_TDI_PPD.csv). "
+            "Required columns: customer, year, sow, ppd, volume (numeric, no blank cells)."
+        )
+        return None
     if not validate_dataframe(df, REQUIRED_COLUMNS['bubble_centered'], chart_type="Customer Bubble Chart (Centered)", files_uploaded=True):
         return None
     if 'year' not in df.columns and year_filter is not None:
         st.warning("Year column not found. Ignoring year filter.")
         year_filter = None
-    if year_filter is not None and 'year' in df.columns and not df[df['year'] == year_filter].empty:
-        df_filtered = df[df['year'] == year_filter]
-    else:
-        if year_filter is not None and 'year' in df.columns:
+    if year_filter is not None and 'year' in df.columns:
+        df_try = drawchat.filter_dataframe_by_year(df, year_filter)
+        if not df_try.empty:
+            df_filtered = df_try
+        else:
             st.warning(f"No data available for year {year_filter}. Defaulting to first available year.")
-            years = sorted(df['year'].unique())
+            years = sorted(
+                df['year'].dropna().unique(),
+                key=lambda x: pd.to_numeric(x, errors='coerce'),
+            )
             year_filter = years[0] if years else None
             st.session_state.chart_settings['bubble_year'] = year_filter
+            df_filtered = drawchat.filter_dataframe_by_year(df, year_filter) if year_filter is not None else df
+    elif 'year' in df.columns:
+        y_cal = drawchat._series_calendar_year(df['year']).dropna()
+        if not y_cal.empty:
+            year_filter = int(y_cal.max())
+            df_filtered = drawchat.filter_dataframe_by_year(df, year_filter)
+        else:
+            df_filtered = df
+    else:
         df_filtered = df
     settings_info = f"📊 Bubble Scale: {bubble_scale:.1f} | Transparency: {alpha:.1f} | "
     settings_info += f"Customer Name Font Size: {customer_name_font_size} | "
     settings_info += f"Volume Label Font Size: {demand_label_font_size} | "
-    settings_info += f"Min Volume Threshold: {min_volume_threshold}"
+    settings_info += f"Volume range: {volume_min:.0f}–{volume_max:.0f} mt"
     if y_min is not None and y_max is not None:
         settings_info += f" | Y-axis: {y_min:.1f} - {y_max:.1f}"
     if year_filter is not None:
@@ -397,9 +468,11 @@ def plot_bubble_chart_centered(df, material, title_fontsize, axis_label_fontsize
             tick_fontsize=tick_fontsize,
             customer_name_font_size=customer_name_font_size,
             volume_label_font_size=demand_label_font_size,
-            min_volume_threshold=min_volume_threshold,
+            volume_min=volume_min,
+            volume_max=volume_max,
             y_min=y_min,
-            y_max=y_max
+            y_max=y_max,
+            exclude_customers=hidden_customers,
         )
         if chart_figure:
             chart_figure.update_layout(
@@ -513,7 +586,7 @@ def reset_axis_ranges(chart_type, customer_name):
         st.session_state.chart_settings.update({
             'customer_name_font_size': 12,
             'demand_label_font_size': 14,
-            'legend_font_size': 12,
+            'legend_font_size': 14,
             'y_min': None,
             'y_max': None,
             'bubble_y_min': None,
@@ -529,7 +602,6 @@ def reset_axis_ranges(chart_type, customer_name):
             'use_custom_bubble_y_range': False,
             'use_custom_price_volume_y_range': False,
             'use_custom_y_demand_range': False,
-            'min_volume_threshold': 50
         })
     st.session_state.previous_chart_type = chart_type
     st.session_state.previous_customer = customer_name
@@ -543,7 +615,7 @@ def get_chart_config(chart_type, customer_name_font_size, demand_label_font_size
     """
     # 1. Base settings shared by all charts
     base_config = {
-        'title_fontsize': 20,
+        'title_fontsize': 22,
         'axis_label_fontsize': 16,
         'tick_fontsize': 12,
         'legend_fontsize': legend_font_size,
@@ -568,7 +640,6 @@ def get_chart_config(chart_type, customer_name_font_size, demand_label_font_size
             'y_max': bubble_y_max,
             'customer_name_font_size': customer_name_font_size,
             'demand_label_font_size': demand_label_font_size,
-            'min_volume_threshold': kwargs.get('min_volume_threshold', 50)
         })
         
     elif chart_type == "Account price vs Volume":
@@ -604,6 +675,35 @@ def get_chart_config(chart_type, customer_name_font_size, demand_label_font_size
     return base_config
 
 
+def _centered_bubble_checkbox_widget_key(year_filter, cust_str):
+    h = hashlib.md5(f"{year_filter}|{cust_str}".encode("utf-8")).hexdigest()[:16]
+    return f"cbubble_chk_{year_filter}_{h}"
+
+
+def hidden_customers_centered_bubble_from_widgets(df, year_filter, volume_min, volume_max):
+    """Unchecked checkboxes exclude customers from the centered bubble chart."""
+    df_eff = df
+    if (
+        df is not None
+        and not df.empty
+        and year_filter is not None
+        and "year" in df.columns
+    ):
+        df_eff = drawchat.filter_dataframe_by_year(df, year_filter)
+    names = drawchat.list_customers_for_centered_bubble(
+        df_eff,
+        year_filter=None,
+        volume_min=volume_min,
+        volume_max=volume_max,
+    )
+    hidden = set()
+    for name in names:
+        k = _centered_bubble_checkbox_widget_key(year_filter, str(name))
+        if not st.session_state.get(k, True):
+            hidden.add(str(name))
+    return hidden
+
+
 def main_app(dataframes, country, material, show_upload_section):
     """
     Main application logic with professional UI, Tabbed navigation, 
@@ -614,7 +714,7 @@ def main_app(dataframes, country, material, show_upload_section):
         st.session_state.chart_settings = {
             'customer_name_font_size': 12,
             'demand_label_font_size': 14,
-            'legend_font_size': 12,
+            'legend_font_size': 14,
             'y_min': None, 'y_max': None,
             'bubble_y_min': None, 'bubble_y_max': None,
             'price_volume_y_min': None, 'price_volume_y_max': None,
@@ -623,7 +723,6 @@ def main_app(dataframes, country, material, show_upload_section):
             'bubble_alpha': 0.7,
             'demand_power_alpha': 1.0,
             'bubble_year': None,
-            'min_volume_threshold': 50,
             'auto_generate_chart': False
         }
 
@@ -643,6 +742,28 @@ def main_app(dataframes, country, material, show_upload_section):
             border-radius: 5px 5px 0px 0px;
             padding: 10px 20px;
         }
+        /* Centered bubble: customer name list — smaller type; grey when hidden (unchecked); tight row spacing */
+        [data-testid="stExpander"] [data-testid="stCheckbox"] {
+            min-height: unset;
+            margin-top: -0.35rem !important;
+            margin-bottom: -0.35rem !important;
+        }
+        /* Show names only; whole row stays clickable via label */
+        [data-testid="stExpander"] [data-testid="stCheckbox"] label > div:first-child {
+            display: none !important;
+        }
+        [data-testid="stExpander"] [data-testid="stCheckbox"] label[data-testid="stWidgetLabel"] p {
+            font-size: 0.78rem !important;
+            font-weight: 400 !important;
+            line-height: 1.35 !important;
+            margin: 0 !important;
+        }
+        [data-testid="stExpander"] [data-testid="stCheckbox"]:has(input:not(:checked)) label[data-testid="stWidgetLabel"] p {
+            color: #9ca3af !important;
+        }
+        [data-testid="stExpander"] [data-testid="stCheckbox"]:has(input:checked) label[data-testid="stWidgetLabel"] p {
+            color: #111827 !important;
+        }
         </style>
     """, unsafe_allow_html=True)
 
@@ -661,20 +782,42 @@ def main_app(dataframes, country, material, show_upload_section):
     # Fetch data into data_dict based on your existing load function
     data_dict = load_country_data(st.session_state.dataframes, country, material, chart_type)
     df_current = get_dataframe(chart_type, material, data_dict, country)
+    normalize_dataframe_columns(df_current)
 
     # --- 5. MAIN WORKSPACE ---
     tab_vis, tab_data, tab_settings = st.tabs(["📈 Visualization", "📝 Data Editor", "⚙️ Layout Settings"])
 
     # TAB 1: VISUALIZATION
     with tab_vis:
+        is_bubble_chart = "bubble" in chart_type.lower()
+        selected_bubble_year = None
+        # Run year widget BEFORE columns: Streamlit renders col_plot (left) before col_ctrl (right),
+        # so the chart must not read bubble_year_select until after the selectbox runs — place it here.
+        if not df_current.empty and is_bubble_chart and 'year' in df_current.columns:
+            _y_opts = []
+            for x in df_current["year"].dropna().unique():
+                yi = _normalize_bubble_year(x)
+                if yi is not None:
+                    _y_opts.append(yi)
+            _y_opts = sorted(set(_y_opts), reverse=True)
+            _y_sig = tuple(_y_opts)
+            if _y_sig:
+                if st.session_state.get("_bubble_year_opts_sig") != _y_sig:
+                    st.session_state["_bubble_year_opts_sig"] = _y_sig
+                    st.session_state.pop("bubble_year_select", None)
+                selected_bubble_year = st.selectbox(
+                    "Data Year",
+                    _y_opts,
+                    key="bubble_year_select",
+                    help="Bubble charts use only rows for this calendar year (2024 vs 2025 are never mixed).",
+                )
+        selected_bubble_year = _normalize_bubble_year(selected_bubble_year)
+
         col_plot, col_ctrl = st.columns([3, 1])
         
         with col_ctrl:
             st.subheader("Filters")
             customer_name = None
-            
-            # Helper to check if we are in any bubble chart view
-            is_bubble_chart = "bubble" in chart_type.lower()
             
             if not df_current.empty:
                 
@@ -687,13 +830,66 @@ def main_app(dataframes, country, material, show_upload_section):
                         st.warning("No 'customer' column found.")
            
                     
-                # 2. Year Selection: Show for ALL bubble charts
-                if is_bubble_chart:
-                    if 'year' in df_current.columns:
-                        years = sorted(df_current['year'].unique(), reverse=True)
-                        st.selectbox("Data Year", years, key="bubble_year_select")
-                    else:
-                        st.error("Column 'year' is required for Bubble Charts.")
+                if is_bubble_chart and 'year' not in df_current.columns:
+                    st.error("Column 'year' is required for Bubble Charts.")
+
+                if chart_type == "Customer Bubble Chart (Centered)" and 'year' in df_current.columns and not df_current.empty:
+                    yr_vis = selected_bubble_year
+                    if yr_vis is None:
+                        y_cal = drawchat._series_calendar_year(df_current["year"]).dropna()
+                        if not y_cal.empty:
+                            yr_vis = int(y_cal.max())
+                    df_year = (
+                        drawchat.filter_dataframe_by_year(df_current, yr_vis)
+                        if yr_vis is not None and "year" in df_current.columns
+                        else df_current
+                    )
+                    vmin_data, vmax_data = drawchat.get_centered_bubble_volume_bounds(
+                        df_current, year_filter=yr_vis
+                    )
+                    sig = (round(vmin_data, 6), round(vmax_data, 6))
+                    sig_store = f"_centered_bubble_vol_bounds_sig_{yr_vis}"
+                    if st.session_state.get(sig_store) != sig:
+                        st.session_state[sig_store] = sig
+                        sk_reset = f"centered_bubble_vol_range_{yr_vis}"
+                        if sk_reset in st.session_state:
+                            del st.session_state[sk_reset]
+
+                    vol_slider_key = f"centered_bubble_vol_range_{yr_vis}"
+                    _span = float(vmax_data - vmin_data)
+                    step = 100.0 if _span >= 100 else max(1.0, _span / 50) if _span > 0 else 1.0
+                    st.caption("Include bubbles only for customers whose total volume this year is in this range (mt).")
+                    st.slider(
+                        "Volume range (mt)",
+                        min_value=vmin_data,
+                        max_value=vmax_data,
+                        value=(vmin_data, vmax_data),
+                        step=step,
+                        key=vol_slider_key,
+                    )
+                    vol_lo, vol_hi = st.session_state[vol_slider_key]
+
+                    bubble_customers = drawchat.list_customers_for_centered_bubble(
+                        df_year,
+                        year_filter=None,
+                        volume_min=vol_lo,
+                        volume_max=vol_hi,
+                    )
+                    st.divider()
+                    with st.expander("Customers", expanded=True):
+                        if yr_vis is not None:
+                            st.caption(
+                                f"Accounts in **{yr_vis}** (volume filter applied). "
+                                "Order and numbers match bubble hover (same order as rows in the CSV for this year)."
+                            )
+                        if not bubble_customers:
+                            st.warning("No customers in the selected volume range for this year.")
+                        for rank_i, cust in enumerate(bubble_customers, start=1):
+                            st.checkbox(
+                                f"{rank_i}. {cust}",
+                                value=True,
+                                key=_centered_bubble_checkbox_widget_key(yr_vis, str(cust)),
+                            )
                         
                 # 3. Price Series Filter
                 if chart_type == "Account price vs Volume":
@@ -724,17 +920,36 @@ def main_app(dataframes, country, material, show_upload_section):
                         chart_fig = plot_price_volume(df_current, customer_name, material, is_taiwan, selected_price_columns=sel_prices, **config)
                     
                     elif chart_type == "Customer bubble Chart":
-                        yr = st.session_state.get('bubble_year_select')
-                        chart_fig = plot_bubble_chart(df_current, None, material, is_taiwan, year_filter=yr, **config)
+                        chart_fig = plot_bubble_chart(
+                            df_current, None, material, is_taiwan, year_filter=selected_bubble_year, **config
+                        )
                     
                     elif chart_type == "Customer Bubble Chart (Centered)":
-                        yr = st.session_state.get('bubble_year_select')
+                        yr = _normalize_bubble_year(selected_bubble_year)
+                        if yr is None and "year" in df_current.columns:
+                            y_cal = drawchat._series_calendar_year(df_current["year"]).dropna()
+                            if not y_cal.empty:
+                                yr = int(y_cal.max())
+                        vol_key = f"centered_bubble_vol_range_{yr}"
+                        vol_pair = st.session_state.get(vol_key)
+                        if vol_pair and len(vol_pair) == 2:
+                            v_lo, v_hi = float(vol_pair[0]), float(vol_pair[1])
+                        else:
+                            v_lo, v_hi = drawchat.get_centered_bubble_volume_bounds(
+                                df_current, year_filter=yr
+                            )
+                        hidden_bubbles = hidden_customers_centered_bubble_from_widgets(
+                            df_current, yr, v_lo, v_hi
+                        )
                         chart_fig = plot_bubble_chart_centered(
-                            df_current, 
-                            material, 
+                            df_current,
+                            material,
                             year_filter=yr,
-                            **config
-                            )                                                           
+                            volume_min=v_lo,
+                            volume_max=v_hi,
+                            hidden_customers=hidden_bubbles,
+                            **config,
+                        )
                     
                     elif chart_type == "Business plan" and customer_name:
                         chart_fig = plot_business_plan(df_current, customer_name, material, is_taiwan, **config)
@@ -753,11 +968,16 @@ def main_app(dataframes, country, material, show_upload_section):
         st.subheader("Data Management")
         if st.session_state.dataframes:
             table_key = st.selectbox("Select Table to Edit", list(st.session_state.dataframes.keys()))
-            st.session_state.dataframes[table_key] = st.data_editor(
+            edited_df = st.data_editor(
                 st.session_state.dataframes[table_key],
                 num_rows="dynamic",
                 key=f"editor_{table_key}"
             )
+            if not edited_df.equals(st.session_state.dataframes[table_key]):
+                st.session_state.dataframes[table_key] = edited_df
+                # Preserve edited values across reruns and refresh chart immediately.
+                st.session_state.data_edited = True
+                st.session_state.chart_settings['auto_generate_chart'] = True
 
     # TAB 3: SETTINGS
     # --- TAB 3: SETTINGS ---
@@ -843,11 +1063,13 @@ def main():
         }
     if 'upload_complete' not in st.session_state:
         st.session_state.upload_complete = False
+    if 'data_edited' not in st.session_state:
+        st.session_state.data_edited = False
     if 'chart_settings' not in st.session_state:
         st.session_state.chart_settings = {
             'customer_name_font_size': 12,
             'demand_label_font_size': 14,
-            'legend_font_size': 12,
+            'legend_font_size': 14,
             'y_min': None, 'y_max': None,
             'bubble_y_min': None, 'bubble_y_max': None,
             'price_volume_y_min': None, 'price_volume_y_max': None,
@@ -856,13 +1078,13 @@ def main():
             'bubble_alpha': 0.7,
             'demand_power_alpha': 1.0,
             'bubble_year': None,
-            'min_volume_threshold': 50,
             'auto_generate_chart': False
         }
     
     # Reset uploaded files if country or material changes
-    if (st.session_state.get('previous_country_main') != country or 
-        st.session_state.get('previous_material_main') != material):
+    if (st.session_state.get('previous_country_main') != country or
+        st.session_state.get('previous_material_main') != material or
+        st.session_state.get('previous_data_source_main') != data_source):
         st.session_state.uploaded_files = {
             'main_file': None,
             'bp_file': None,
@@ -870,8 +1092,10 @@ def main():
         }
         st.session_state.upload_complete = False
         st.session_state.dataframes = {}
+        st.session_state.data_edited = False
     st.session_state.previous_country_main = country
     st.session_state.previous_material_main = material
+    st.session_state.previous_data_source_main = data_source
     
     # Upload section visibility follows selected data source mode.
     show_upload_section = (data_source == "Manual CSV Upload")
@@ -883,7 +1107,8 @@ def main():
         dataframes, all_uploaded = load_data_from_memory(country, material)
         if all_uploaded:
             st.session_state.upload_complete = True
-            st.session_state.dataframes = {k: v.copy() for k, v in dataframes.items()}
+            if not st.session_state.data_edited:
+                st.session_state.dataframes = {k: v.copy() for k, v in dataframes.items()}
             st.session_state.chart_settings['auto_generate_chart'] = True
             st.success("Loaded data from memory files successfully.")
     else:
@@ -917,7 +1142,8 @@ def main():
                          'df_ppd']
         if all(key in dataframes and not dataframes[key].empty for key in required_keys):
             st.session_state.upload_complete = True
-            st.session_state.dataframes = {k: v.copy() for k, v in dataframes.items()}
+            if not st.session_state.data_edited:
+                st.session_state.dataframes = {k: v.copy() for k, v in dataframes.items()}
             st.session_state.chart_settings['auto_generate_chart'] = True
     
     # Always call main_app to ensure UI renders
