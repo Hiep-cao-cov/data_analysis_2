@@ -61,6 +61,8 @@ Typical failures come from **wrong port/host** (Streamlit defaults to `localhost
 
 If the build still fails, open the **Logs** tab and check for missing packages (add to `requirements.txt`) or path errors (`ModuleNotFoundError: dashboard` usually means the wrong root directory).
 
+- **`Invalid requirement: '\x00#...` when pip runs** — `requirements.txt` was saved as **UTF-16** (e.g. Windows “Unicode” in some editors). Re-save the file as **UTF-8** (VS Code: bottom status bar → “UTF-8”), remove `#` comment lines if needed, commit, and redeploy. This repo’s `requirements.txt` is plain UTF-8 with only package lines.
+
 ## Data Source Modes
 
 ### 1) Memory (preloaded files)
