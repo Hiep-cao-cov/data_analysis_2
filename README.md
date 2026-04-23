@@ -46,6 +46,21 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+## Deploy on Render (GitHub)
+
+Typical failures come from **wrong port/host** (Streamlit defaults to `localhost` and a fixed port; Render injects **`PORT`** and expects **`0.0.0.0`**).
+
+1. **Root directory** — If this project is a **subfolder** of your Git repo, set **Root Directory** in the Render service to that folder (the one that contains `app.py`, `dashboard/`, and `requirements.txt`).
+2. **Build command:** `pip install --upgrade pip && pip install -r requirements.txt`
+3. **Start command:**
+   ```bash
+   streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
+   ```
+   The repo includes `render.yaml` and `Procfile` with this command; you can also use **New → Blueprint** and point at `render.yaml`.
+4. **Python** — Set **Environment** `PYTHON_VERSION` to `3.11.0` (or match `render.yaml`) if the build picks the wrong runtime.
+
+If the build still fails, open the **Logs** tab and check for missing packages (add to `requirements.txt`) or path errors (`ModuleNotFoundError: dashboard` usually means the wrong root directory).
+
 ## Data Source Modes
 
 ### 1) Memory (preloaded files)

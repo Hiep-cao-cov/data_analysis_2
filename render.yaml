@@ -1,0 +1,16 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# Connect this repo → New Blueprint, or create a Web Service and set the same commands manually.
+#
+# If this app lives in a subfolder of your Git repo, set "Root Directory" in the Render dashboard
+# to that folder (e.g. data_analysis_2) so app.py and dashboard/ are at the service root.
+
+services:
+  - type: web
+    name: pmdi-tdi-dashboard
+    runtime: python
+    plan: free
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.0"

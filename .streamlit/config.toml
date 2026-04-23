@@ -1,0 +1,6 @@
+# Local defaults; on Render, CLI flags in startCommand override port/address.
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false
