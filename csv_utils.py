@@ -105,7 +105,7 @@ def preprocess_dataframe(
     required_set = set(required_present)
 
     if "customer" in df.columns:
-        c = df["customer"].astype(str).str.strip()
+        c = df["customer"].astype(str).str.strip().str.upper()
         c = c.where(~c.str.lower().isin(_MESSY_NULL_TOKENS), other=np.nan)
         c = c.replace(r"^\s*$", np.nan, regex=True)
         df["customer"] = c
