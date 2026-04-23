@@ -6,6 +6,7 @@ import io
 import os
 from eda import load_and_extract_dataframes
 from config import REQUIRED_COLUMNS, SUPPLIERS, CHART_TYPES, COUNTRIES, MATERIALS
+from csv_utils import read_csv_flexible
 
 #--------------test code starts here----------------#
 def validate_dataframe(df, required_columns, material=None, country=None, chart_type=None, files_uploaded=False):
@@ -1013,7 +1014,7 @@ def main():
                 if file_obj.size == 0:
                     st.error(f"Uploaded file for {file_name} is empty. Please upload a valid CSV file.")
                     continue
-                df = pd.read_csv(file_obj, encoding='utf-8')
+                    df = read_csv_flexible(file_obj)
                 if df.empty:
                     st.error(f"Uploaded file for {file_name} contains no data. Please upload a valid CSV file.")
                     continue

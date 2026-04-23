@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from config import REQUIRED_COLUMNS, MATERIALS
+from csv_utils import read_csv_flexible
 
 def load_and_extract_dataframes(country, material, show_upload_section, uploaded_files):
     """Load and extract DataFrames for the given country and material, using session state for persistence"""
@@ -33,7 +34,7 @@ def load_and_extract_dataframes(country, material, show_upload_section, uploaded
                         st.error(f"{main_label} CSV is empty. Please upload a valid CSV file.")
                     else:
                         try:
-                            df = pd.read_csv(new_main_file, encoding='utf-8')
+                            df = read_csv_flexible(new_main_file)
                             if df.empty:
                                 st.error(f"{main_label} CSV contains no data. Please upload a valid CSV file.")
                             else:
@@ -51,7 +52,7 @@ def load_and_extract_dataframes(country, material, show_upload_section, uploaded
                         st.error(f"{bp_label} CSV is empty. Please upload a valid CSV file.")
                     else:
                         try:
-                            df = pd.read_csv(new_bp_file, encoding='utf-8')
+                            df = read_csv_flexible(new_bp_file)
                             if df.empty:
                                 st.error(f"{bp_label} CSV contains no data. Please upload a valid CSV file.")
                             else:
@@ -69,7 +70,7 @@ def load_and_extract_dataframes(country, material, show_upload_section, uploaded
                         st.error(f"{ppd_label} CSV is empty. Please upload a valid CSV file.")
                     else:
                         try:
-                            df = pd.read_csv(new_ppd_file, encoding='utf-8')
+                            df = read_csv_flexible(new_ppd_file)
                             if df.empty:
                                 st.error(f"{ppd_label} CSV contains no data. Please upload a valid CSV file.")
                             else:
@@ -84,7 +85,7 @@ def load_and_extract_dataframes(country, material, show_upload_section, uploaded
         if uploaded_files.get(file_key):
             try:
                 uploaded_files[file_key].seek(0)
-                df = pd.read_csv(uploaded_files[file_key], encoding='utf-8')
+                df = read_csv_flexible(uploaded_files[file_key])
                 if df_name == 'df_main':
                     df_main = df
                 elif df_name == 'df_bp':
