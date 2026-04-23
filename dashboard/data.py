@@ -12,6 +12,26 @@ from dashboard.validation import validate_dataframe
 _PROJECT_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 _DATA_DIR = os.path.join(_PROJECT_ROOT, "data")
 
+
+def _data_file_path(expected_name: str):
+    """
+    Resolve a CSV under ``data/`` by expected name.
+
+    On **Linux** (e.g. Render), ``VN_TDI_FINAL.csv`` and ``VN_TDI_final.csv`` are different
+    files. Windows often hides that. This matches the requested name case-insensitively so
+    memory mode works the same locally and on the server.
+    """
+    path = os.path.join(_DATA_DIR, expected_name)
+    if os.path.isfile(path):
+        return path
+    if not os.path.isdir(_DATA_DIR):
+        return None
+    want = expected_name.lower()
+    for entry in os.listdir(_DATA_DIR):
+        if entry.lower() == want:
+            return os.path.join(_DATA_DIR, entry)
+    return None
+
 # Predefined CSVs per (country, material) for "Memory" mode
 MEMORY_FILE_MAP = {
     ("Vietnam", "PMDI"): {
@@ -155,27 +175,31 @@ def load_data_from_memory(country, material):
     dataframes = {}
     required_loaded = True
     for table_key, file_key in [(table_main, "main"), (table_bp, "bp")]:
-        file_path = os.path.join(_DATA_DIR, selected[file_key])
-        if not os.path.exists(file_path):
-            st.error(f"Required memory file not found: {selected[file_key]}")
+        logical_name = selected[file_key]
+        file_path = _data_file_path(logical_name)
+        if not file_path:
+            st.error(
+                f"Required memory file not found: {logical_name}. "
+                f"Ensure it exists in the ``data/`` folder on the server (check **filename case** in Git; Linux is case-sensitive)."
+            )
             required_loaded = False
             continue
         try:
             df = read_csv_flexible(file_path)
             if df.empty:
-                st.error(f"Required memory file is empty: {selected[file_key]}")
+                st.error(f"Required memory file is empty: {logical_name}")
                 required_loaded = False
                 continue
             dataframes[table_key] = df
         except pd.errors.EmptyDataError:
-            st.error(f"Failed to parse memory file (empty/no columns): {selected[file_key]}")
+            st.error(f"Failed to parse memory file (empty/no columns): {logical_name}")
             required_loaded = False
         except Exception as e:
-            st.error(f"Error reading memory file {selected[file_key]}: {str(e)}")
+            st.error(f"Error reading memory file {logical_name}: {str(e)}")
             required_loaded = False
 
-    ppd_path = os.path.join(_DATA_DIR, selected["ppd"])
-    if os.path.exists(ppd_path):
+    ppd_path = _data_file_path(selected["ppd"])
+    if ppd_path and os.path.isfile(ppd_path):
         try:
             ppd_df = read_csv_flexible(ppd_path)
             if not ppd_df.empty:

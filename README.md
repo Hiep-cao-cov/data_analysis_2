@@ -62,6 +62,7 @@ Typical failures come from **wrong port/host** (Streamlit defaults to `localhost
 If the build still fails, open the **Logs** tab and check for missing packages (add to `requirements.txt`) or path errors (`ModuleNotFoundError: dashboard` usually means the wrong root directory).
 
 - **`Invalid requirement: '\x00#...` when pip runs** — `requirements.txt` was saved as **UTF-16** (e.g. Windows “Unicode” in some editors). Re-save the file as **UTF-8** (VS Code: bottom status bar → “UTF-8”), remove `#` comment lines if needed, commit, and redeploy. This repo’s `requirements.txt` is plain UTF-8 with only package lines.
+- **Memory (preload) works for PMDI but not TDI on Render** — Linux is **case-sensitive** for file names. If Git has `VN_TDI_final.csv` but the app looks for `VN_TDI_FINAL.csv`, it fails on the server (Windows often still opens the file). Rename the CSVs in the repo to match the names in `dashboard/data.py` (`VN_TDI_FINAL.csv`, `VN_TDI_BP.csv`, `VN_TDI_PPD.csv`) or rely on the app’s case-insensitive lookup under `data/`.
 
 ## Data Source Modes
 
