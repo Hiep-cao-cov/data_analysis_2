@@ -7,23 +7,66 @@ import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
 
+
+def demand_chart_volume_columns(all_columns, material=None, suppliers_fallback=None):
+    """
+    Supplier volume columns for the Customer Demand stacked chart.
+
+    When ``material`` is set, columns are taken by position on the main CSV layout:
+    indices 4:-3 for PMDI/MDI (exclude trailing vn_pp, seap_pp, apac_pp) and 4:-2 for TDI
+    (exclude vn_pp/tw_pp and apac_pp). Otherwise uses ``suppliers_fallback`` names that exist
+    in ``all_columns``.
+    """
+    cols = list(all_columns)
+    if material:
+        key = (material or "").strip().upper().replace(" ", "")
+        if key in ("PMDI", "MDI"):
+            if len(cols) < 8:
+                return []
+            chosen = cols[4:-3]
+        elif key == "TDI":
+            if len(cols) < 7:
+                return []
+            chosen = cols[4:-2]
+        else:
+            chosen = []
+        return [c for c in chosen if c in cols]
+    return [s for s in (suppliers_fallback or []) if s in cols]
+
+
 def plot_customer_demand(df, customer_name, customer_column, suppliers, year_column, y_range, 
                          title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, 
                          legend_title_fontsize, percentage_label_fontsize, customer_name_font_size, 
-                         demand_label_font_size, y_min=None, y_max=None, demand_power_alpha=1.0):
+                         demand_label_font_size, y_min=None, y_max=None, demand_power_alpha=1.0,
+                         material=None):
     
     df_filtered = df[df[customer_column] == customer_name].copy()
     if df_filtered.empty:
         raise ValueError(f"No data for customer {customer_name}")
 
+    volume_cols = demand_chart_volume_columns(
+        df_filtered.columns, material=material, suppliers_fallback=suppliers
+    )
+    if not volume_cols:
+        raise ValueError(
+            f"No supplier volume columns for customer {customer_name} "
+            f"(material={material!r}, layout or suppliers list)."
+        )
+
     # --- 1. SORT SUPPLIERS BY TOTAL VOLUME ---
     # We sum the volume for each supplier across all years to determine the order
-    supplier_totals = {s: df_filtered[s].sum() for s in suppliers if s in df_filtered.columns}
+    supplier_totals = {s: df_filtered[s].sum() for s in volume_cols}
     # Sort: Smallest total volume first (will be at the bottom of the stack)
     sorted_suppliers = sorted(supplier_totals.keys(), key=lambda x: supplier_totals[x])
 
+    total_supply_by_year = {}
+    for _, row in df_filtered.iterrows():
+        y = row[year_column]
+        total_supply_by_year[y] = sum(
+            (row[s] if pd.notna(row[s]) else 0) for s in sorted_suppliers
+        )
+
     fig = go.Figure()
-    total_supply_by_year = {row[year_column]: row['demand'] for _, row in df_filtered.iterrows()}
 
     # Visual scaling for display only; hover/text still show real values.
     alpha = float(demand_power_alpha) if demand_power_alpha is not None else 1.0
@@ -72,13 +115,9 @@ def plot_customer_demand(df, customer_name, customer_column, suppliers, year_col
             legendrank=i + 1 
         ))
 
-    # --- 3. ADD TOTAL DEMAND OUTLINE ---
-    demand_values = df_filtered['demand'].tolist()
+    # --- 3. ADD TOTAL DEMAND OUTLINE (row sum of supplier volumes; matches stack height) ---
+    demand_values = [total_supply_by_year.get(row[year_column], 0.0) for _, row in df_filtered.iterrows()]
     demand_values_scaled = [scaled_total_by_year.get(year, 0.0) for year in df_filtered[year_column].tolist()]
-    # Special rule: the last column's Total Demand uses the original demand column
-    # (not the summed supplier stacks).
-    if demand_values_scaled:
-        demand_values_scaled[-1] = np.power(max(demand_values[-1], 0), alpha)
     fig.add_trace(go.Bar(
         x=df_filtered[year_column],
         y=demand_values_scaled,

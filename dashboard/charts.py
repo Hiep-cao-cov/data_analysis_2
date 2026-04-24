@@ -1,5 +1,6 @@
 """Streamlit-facing chart builders: validate, then delegate to drawchat."""
 
+import pandas as pd
 import streamlit as st
 import drawchat
 from config import REQUIRED_COLUMNS, SUPPLIERS
@@ -36,12 +37,18 @@ def plot_customer_demand(
     ):
         return None
     suppliers = SUPPLIERS[material.lower()]
-    available_suppliers = [col for col in suppliers if col in df.columns]
+    available_suppliers = drawchat.demand_chart_volume_columns(
+        df.columns, material=material, suppliers_fallback=suppliers
+    )
     if not available_suppliers:
         st.error(f"No valid supplier columns for {material}")
         return None
     df_filtered = df[df["customer"] == customer_name]
-    max_demand = df_filtered["demand"].max() if not df_filtered.empty else 0
+    max_demand = 0.0
+    if not df_filtered.empty:
+        for _, row in df_filtered.iterrows():
+            row_sum = sum(float(row[c]) if pd.notna(row[c]) else 0.0 for c in available_suppliers)
+            max_demand = max(max_demand, row_sum)
     try:
         fig = drawchat.plot_customer_demand(
             df,
@@ -61,6 +68,7 @@ def plot_customer_demand(
             y_min,
             y_max,
             demand_power_alpha,
+            material=material,
         )
         update_legend_vertical_right(fig, legend_fontsize)
         return fig

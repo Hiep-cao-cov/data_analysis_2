@@ -182,18 +182,24 @@ def plot_customer_demand(df, customer_name, material, is_taiwan, title_fontsize,
     if not validate_dataframe(df, REQUIRED_COLUMNS['demand_charts'], material=material, chart_type="Customer Demand", files_uploaded=True):
         return None
     suppliers = SUPPLIERS[material.lower()]
-    available_suppliers = [col for col in suppliers if col in df.columns]
+    available_suppliers = drawchat.demand_chart_volume_columns(
+        df.columns, material=material, suppliers_fallback=suppliers
+    )
     if not available_suppliers:
         st.error(f"No valid supplier columns for {material}")
         return None
     df_filtered = df[df['customer'] == customer_name]
-    max_demand = df_filtered['demand'].max() if not df_filtered.empty else 0
+    max_demand = 0.0
+    if not df_filtered.empty:
+        for _, row in df_filtered.iterrows():
+            row_sum = sum(float(row[c]) if pd.notna(row[c]) else 0.0 for c in available_suppliers)
+            max_demand = max(max_demand, row_sum)
     try:
         fig = drawchat.plot_customer_demand(
             df, customer_name, 'customer', available_suppliers, 'year', (0, max_demand * 1.4),
             title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, 
             legend_title_fontsize, percentage_label_fontsize, customer_name_font_size, 
-            demand_label_font_size, y_min, y_max
+            demand_label_font_size, y_min, y_max, material=material
         )
         if fig:
             fig.update_layout(
