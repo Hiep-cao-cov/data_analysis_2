@@ -75,6 +75,24 @@ def _supplier_column_names(material: str | None) -> frozenset:
     return frozenset()
 
 
+def _demand_sum_layout_columns(df: pd.DataFrame, material: str | None) -> list[str]:
+    """
+    Supplier-volume columns by CSV layout position for demand reconciliation.
+
+    - PMDI / MDI: columns [4:-3]
+    - TDI: columns [4:-2]
+    """
+    if material is None:
+        return []
+    cols = list(df.columns)
+    key = str(material).strip().upper().replace(" ", "")
+    if key in ("PMDI", "MDI"):
+        return cols[4:-3] if len(cols) >= 8 else []
+    if key == "TDI":
+        return cols[4:-2] if len(cols) >= 7 else []
+    return []
+
+
 def coerce_messy_numeric(series: pd.Series) -> pd.Series:
     """Parse numbers from strings: spaces, comma decimals, %, '', None/NaN tokens."""
     t = series.astype(str).str.strip()
@@ -124,6 +142,21 @@ def preprocess_dataframe(
     for col in all_metric:
         if col in df.columns:
             df[col] = df[col].replace([np.inf, -np.inf], np.nan)
+
+    # Keep demand aligned with supplier totals by file layout:
+    # PMDI/MDI uses columns 4:-3, TDI uses columns 4:-2.
+    if "demand" in df.columns and material:
+        demand_cols = [c for c in _demand_sum_layout_columns(df, material) if c in df.columns]
+        if demand_cols:
+            demand_sum = df[demand_cols].apply(pd.to_numeric, errors="coerce").fillna(0.0).sum(axis=1)
+            mismatch = (df["demand"] - demand_sum).abs() > 1e-9
+            mismatch_count = int(mismatch.sum())
+            if mismatch_count > 0:
+                df.loc[mismatch, "demand"] = demand_sum[mismatch]
+                st.info(
+                    "Aligned 'demand' with supplier-sum layout rule "
+                    f"for {mismatch_count} row(s)."
+                )
 
     fill_messages: List[str] = []
     for col in df.columns:
