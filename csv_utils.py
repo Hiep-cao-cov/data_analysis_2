@@ -145,17 +145,22 @@ def preprocess_dataframe(
 
     # Keep demand aligned with supplier totals by file layout:
     # PMDI/MDI uses columns 4:-3, TDI uses columns 4:-2.
+    # Exception: keep the newest year's original "demand" values unchanged,
+    # because Customer Demand outline uses demand for latest year by design.
     if "demand" in df.columns and material:
         demand_cols = [c for c in _demand_sum_layout_columns(df, material) if c in df.columns]
         if demand_cols:
             demand_sum = df[demand_cols].apply(pd.to_numeric, errors="coerce").fillna(0.0).sum(axis=1)
-            mismatch = (df["demand"] - demand_sum).abs() > 1e-9
+            year_series = pd.to_numeric(df["year"], errors="coerce") if "year" in df.columns else pd.Series(np.nan, index=df.index)
+            latest_year = year_series.max(skipna=True) if not year_series.isna().all() else np.nan
+            is_latest_year = (year_series == latest_year) if not pd.isna(latest_year) else pd.Series(False, index=df.index)
+            mismatch = ((df["demand"] - demand_sum).abs() > 1e-9) & (~is_latest_year)
             mismatch_count = int(mismatch.sum())
             if mismatch_count > 0:
                 df.loc[mismatch, "demand"] = demand_sum[mismatch]
                 st.info(
-                    "Aligned 'demand' with supplier-sum layout rule "
-                    f"for {mismatch_count} row(s)."
+                    "Aligned 'demand' with supplier-sum layout rule for non-latest years "
+                    f"({mismatch_count} row(s) adjusted)."
                 )
 
     fill_messages: List[str] = []

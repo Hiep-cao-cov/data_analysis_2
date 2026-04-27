@@ -127,9 +127,15 @@ def plot_customer_demand(df, customer_name, customer_column, suppliers, year_col
             legendrank=i + 1 
         ))
 
-    # --- 3. ADD TOTAL DEMAND OUTLINE (row sum of supplier volumes; matches stack height) ---
-    demand_values = [total_supply_by_year.get(row[year_column], 0.0) for _, row in df_filtered.iterrows()]
-    demand_values_scaled = [scaled_total_by_year.get(year, 0.0) for year in df_filtered[year_column].tolist()]
+    # --- 3. ADD TOTAL DEMAND OUTLINE ---
+    # Use "demand" column for all years when available.
+    if "demand" in df_filtered.columns:
+        demand_values = [float(row["demand"]) if pd.notna(row["demand"]) else 0.0 for _, row in df_filtered.iterrows()]
+        demand_values_scaled = [np.power(max(v, 0.0), alpha) for v in demand_values]
+    else:
+        # Fallback for legacy files without demand column.
+        demand_values = [total_supply_by_year.get(row[year_column], 0.0) for _, row in df_filtered.iterrows()]
+        demand_values_scaled = [scaled_total_by_year.get(year, 0.0) for year in df_filtered[year_column].tolist()]
     fig.add_trace(go.Bar(
         x=df_filtered[year_column],
         y=demand_values_scaled,
@@ -139,6 +145,7 @@ def plot_customer_demand(df, customer_name, customer_column, suppliers, year_col
         text=[f"{val:.0f} mt" for val in demand_values],
         textposition='outside',
         textfont=dict(size=demand_label_font_size+8, color='red'),
+        yaxis='y2',
         hoverinfo='skip',
         
     ))
@@ -167,6 +174,13 @@ def plot_customer_demand(df, customer_name, customer_column, suppliers, year_col
             title=dict(text=y_axis_title, font=dict(size=axis_label_fontsize)),
             range=final_y_range,
             tickfont=dict(size=tick_fontsize)
+        ),
+        yaxis2=dict(
+            overlaying='y',
+            side='right',
+            showticklabels=False,
+            matches='y',
+            range=final_y_range,
         ),
         barmode='stack',
         bargap=0.2, # Smaller gap to make bars look wider
