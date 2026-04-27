@@ -139,7 +139,6 @@ def plot_customer_demand(df, customer_name, customer_column, suppliers, year_col
         text=[f"{val:.0f} mt" for val in demand_values],
         textposition='outside',
         textfont=dict(size=demand_label_font_size+8, color='red'),
-        yaxis='y2',
         hoverinfo='skip',
         
     ))
@@ -169,7 +168,6 @@ def plot_customer_demand(df, customer_name, customer_column, suppliers, year_col
             range=final_y_range,
             tickfont=dict(size=tick_fontsize)
         ),
-        yaxis2=dict(overlaying='y', side='right', range=final_y_range, showticklabels=False),
         barmode='stack',
         bargap=0.2, # Smaller gap to make bars look wider
         
