@@ -73,6 +73,8 @@ def plot_customer_demand(df, customer_name, customer_column, suppliers, year_col
     alpha = min(1.0, max(0.3, alpha))
 
     # --- 2. ADD SORTED SUPPLIERS ---
+    # Keep existing sort/stack order logic, but pin Covestro to blue for consistency.
+    covestro_blue = px.colors.qualitative.Plotly[0]
     scaled_total_by_year = {year: 0.0 for year in df_filtered[year_column].tolist()}
     for i, supplier in enumerate(sorted_suppliers):
         values = []
@@ -96,6 +98,11 @@ def plot_customer_demand(df, customer_name, customer_column, suppliers, year_col
                 real_values.append(0)
                 text_labels.append("")
         
+        supplier_color = (
+            covestro_blue
+            if str(supplier).strip().lower() == "covestro"
+            else px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)]
+        )
         fig.add_trace(go.Bar(
             x=df_filtered[year_column],
             y=values,
@@ -106,8 +113,13 @@ def plot_customer_demand(df, customer_name, customer_column, suppliers, year_col
             # Make bars wider for better readability.
             width=0.7,
             textfont=dict(size=percentage_label_fontsize, color='black',family='Arial Black'),
-            marker=dict(color=px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)]),
+            marker=dict(color=supplier_color),
             customdata=real_values,
+            hoverlabel=dict(
+                bgcolor=supplier_color,
+                bordercolor=supplier_color,
+                font=dict(color='white')
+            ),
             hovertemplate=(
                     '<b>Supplier:</b> ' + supplier.capitalize() + '<br>' +
                     '<b>Volume:</b> %{customdata:.0f} mt<extra></extra>'

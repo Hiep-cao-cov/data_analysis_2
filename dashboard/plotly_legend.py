@@ -12,6 +12,9 @@ def update_legend_horizontal_bottom(fig, legend_fontsize):
             xanchor="center",
             x=0.5,
             font=dict(size=legend_fontsize),
+            bgcolor="rgba(255,255,255,0.9)",
+            bordercolor="rgba(148,163,184,0.5)",
+            borderwidth=1,
         )
     )
 
@@ -27,5 +30,8 @@ def update_legend_vertical_right(fig, legend_fontsize):
             xanchor="left",
             x=1.02,
             font=dict(size=legend_fontsize),
+            bgcolor="rgba(255,255,255,0.9)",
+            bordercolor="rgba(148,163,184,0.5)",
+            borderwidth=1,
         )
     )

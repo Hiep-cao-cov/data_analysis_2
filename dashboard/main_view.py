@@ -73,6 +73,7 @@ def main_app(country, material, show_upload_section):
     tab_vis, tab_data, tab_settings = st.tabs(["📈 Visualization", "📝 Data Editor", "⚙️ Layout Settings"])
 
     with tab_vis:
+        st.markdown("##### Visualization Workspace")
         is_bubble_chart = "bubble" in chart_type.lower()
         selected_bubble_year = None
         if not df_current.empty and is_bubble_chart and "year" in df_current.columns:
@@ -98,20 +99,24 @@ def main_app(country, material, show_upload_section):
         col_plot, col_ctrl = st.columns([3, 1])
 
         with col_ctrl:
-            st.subheader("Filters")
+            st.markdown("##### Filter & Controls")
             customer_name = None
+            with st.container(border=True):
+                st.markdown("**Primary Filters**")
 
-            if not df_current.empty:
-                if not is_bubble_chart:
-                    if "customer" in df_current.columns:
-                        customers = sorted(df_current["customer"].unique())
-                        customer_name = st.selectbox("Select Account", customers, key="customer_select")
-                    else:
-                        st.warning("No 'customer' column found.")
+                if not df_current.empty:
+                    if not is_bubble_chart:
+                        if "customer" in df_current.columns:
+                            customers = sorted(df_current["customer"].unique())
+                            customer_name = st.selectbox("Select Account", customers, key="customer_select")
+                        else:
+                            st.warning("No 'customer' column found.")
 
-                if is_bubble_chart and "year" not in df_current.columns:
-                    st.error("Column 'year' is required for Bubble Charts.")
+                    if is_bubble_chart and "year" not in df_current.columns:
+                        st.error("Column 'year' is required for Bubble Charts.")
 
+            with st.container(border=True):
+                st.markdown("**Advanced Controls**")
                 if (
                     chart_type == "Customer Bubble Chart (Centered)"
                     and "year" in df_current.columns
@@ -159,7 +164,7 @@ def main_app(country, material, show_upload_section):
                         volume_max=vol_hi,
                     )
                     st.divider()
-                    with st.expander("Customers", expanded=True):
+                    with st.expander("Customer Visibility", expanded=True):
                         if yr_vis is not None:
                             st.caption(
                                 f"Accounts in **{yr_vis}** (volume filter applied). "
@@ -174,7 +179,7 @@ def main_app(country, material, show_upload_section):
                                 key=centered_bubble_checkbox_widget_key(yr_vis, str(cust)),
                             )
 
-                if chart_type == "Account price vs Volume":
+                if chart_type == "Account price vs Volume" and not df_current.empty:
                     price_options = (
                         MATERIAL_CONFIG.get(material.lower(), {}).get("price_columns", {}).get(country, [])
                     )
@@ -187,6 +192,7 @@ def main_app(country, material, show_upload_section):
                     )
 
             st.divider()
+            st.caption("Apply current filters and refresh the chart.")
             generate_chart = st.button("🚀 Generate Chart", type="primary", use_container_width=True)
 
         with col_plot:
@@ -267,6 +273,7 @@ def main_app(country, material, show_upload_section):
 
     with tab_data:
         st.subheader("Data Management")
+        st.caption("Review and edit source tables directly. Changes are applied immediately in this session.")
         if st.session_state.dataframes:
             table_key = st.selectbox("Select Table to Edit", list(st.session_state.dataframes.keys()))
             edited_df = st.data_editor(
@@ -281,10 +288,12 @@ def main_app(country, material, show_upload_section):
 
     with tab_settings:
         st.subheader("Visual & Axis Refinement")
+        st.caption("Adjust visual presentation only. Chart business logic and calculations remain unchanged.")
         s1, s2, s3 = st.columns(3)
 
         with s1:
             st.markdown("##### 🔡 Fonts")
+            st.caption("Control text readability in labels and legends.")
             st.slider(
                 "Customer Font",
                 8,
@@ -302,6 +311,7 @@ def main_app(country, material, show_upload_section):
 
         with s2:
             st.markdown("##### 🫧 Bubbles")
+            st.caption("Tune bubble visibility and overlap behavior.")
             st.slider(
                 "Size Scale",
                 1.0,
@@ -329,6 +339,7 @@ def main_app(country, material, show_upload_section):
 
         with s3:
             st.markdown("##### 📏 Y-Axis Range")
+            st.caption("Configure price-axis view for the price-volume chart.")
             if chart_type == "Account price vs Volume":
                 r_min, r_max = get_price_range(df_current, chart_type, material, country, customer_name)
                 st.session_state.chart_settings["price_volume_y_min"] = st.slider(

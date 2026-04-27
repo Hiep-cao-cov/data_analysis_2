@@ -2,12 +2,35 @@
 
 MAIN_PAGE_STYLE = """
     <style>
-    .block-container {padding-top: 1.5rem; max-width: 98%;}
-    .stTabs [data-baseweb="tab-list"] {gap: 10px;}
+    .block-container {padding-top: 1.2rem; max-width: 98%;}
+    .stTabs [data-baseweb="tab-list"] {gap: 8px;}
     .stTabs [data-baseweb="tab"] {
-        background-color: #f8f9fa;
-        border-radius: 5px 5px 0px 0px;
-        padding: 10px 20px;
+        background-color: #f3f7ff;
+        border: 1px solid #dbe7ff;
+        border-radius: 8px 8px 0px 0px;
+        padding: 8px 16px;
+        font-weight: 600;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #e8f0ff !important;
+        border-bottom-color: #e8f0ff !important;
+    }
+    section[data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #f7faff 0%, #f9fafb 100%);
+        border-right: 1px solid #e5e7eb;
+    }
+    div[data-testid="stButton"] > button {
+        border-radius: 8px;
+        border: 1px solid #d1d5db;
+        font-weight: 600;
+    }
+    div[data-testid="stDownloadButton"] > button {
+        border-radius: 8px;
+        border: 1px solid #d1d5db;
+        font-weight: 600;
+    }
+    div[data-testid="stAlert"] {
+        border-radius: 10px;
     }
     [data-testid="stExpander"] [data-testid="stCheckbox"] {
         min-height: unset;
