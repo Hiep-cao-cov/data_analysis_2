@@ -150,6 +150,8 @@ def preprocess_dataframe(
     if "demand" in df.columns and material:
         demand_cols = [c for c in _demand_sum_layout_columns(df, material) if c in df.columns]
         if demand_cols:
+            # Ensure demand accepts decimal values when supplier sums are non-integer.
+            df["demand"] = pd.to_numeric(df["demand"], errors="coerce").astype(float)
             demand_sum = df[demand_cols].apply(pd.to_numeric, errors="coerce").fillna(0.0).sum(axis=1)
             year_series = pd.to_numeric(df["year"], errors="coerce") if "year" in df.columns else pd.Series(np.nan, index=df.index)
             latest_year = year_series.max(skipna=True) if not year_series.isna().all() else np.nan
