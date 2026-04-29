@@ -6,6 +6,7 @@ from config import COUNTRIES, MATERIALS
 from csv_utils import read_csv_flexible
 from eda import load_and_extract_dataframes
 
+from dashboard.auth import require_login
 from dashboard.data import load_data_from_memory
 from dashboard.main_view import main_app
 
@@ -21,6 +22,9 @@ def setup_page():
 
 
 def main():
+    if not require_login():
+        return
+
     st.sidebar.header("🌎 Country and Material")
     country = st.sidebar.selectbox("Select Country", COUNTRIES, key="country_select")
     material_options = ["TDI"] if country == "Taiwan" else MATERIALS

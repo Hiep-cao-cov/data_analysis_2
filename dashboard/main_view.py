@@ -1,11 +1,14 @@
 """Main Streamlit layout: header, data load, visualization / data / settings tabs."""
 
 import io
+import os
+from datetime import datetime
 
 import drawchat
+import pandas as pd
 import streamlit as st
-from config import CHART_TYPES, MATERIAL_CONFIG, MATERIALS
-from csv_utils import normalize_dataframe_columns
+from config import CHART_TYPES, MATERIAL_CONFIG, MATERIALS, REQUIRED_COLUMNS
+from csv_utils import ALLOW_NEGATIVE, STRICT_NUMERIC, coerce_messy_numeric, normalize_dataframe_columns
 
 from dashboard.centered_bubble import (
     centered_bubble_checkbox_widget_key,
@@ -23,6 +26,71 @@ from dashboard.data import get_dataframe, load_country_data
 from dashboard.ranges import get_price_range
 from dashboard.styles import MAIN_PAGE_STYLE
 from dashboard.year_filters import normalize_bubble_year
+
+
+def _expected_filename(country: str, material: str, table_key: str) -> str:
+    if country == "Vietnam" and material == "PMDI":
+        mapping = {
+            "df_mdi": "VN_MDI_FINAL.csv",
+            "df_mdi_bp": "VN_MDI_BP.csv",
+            "df_ppd": "VN_MDI_PPD.csv",
+        }
+    elif country == "Vietnam" and material == "TDI":
+        mapping = {
+            "df_tdi": "VN_TDI_FINAL.csv",
+            "df_tdi_bp": "VN_TDI_BP.csv",
+            "df_ppd": "VN_TDI_PPD.csv",
+        }
+    else:
+        mapping = {
+            "df_tdi": "TW_TDI_FINAL.csv",
+            "df_tdi_bp": "TW_TDI_BP.csv",
+            "df_ppd": "TW_TDI_PPD.csv",
+        }
+    return mapping.get(table_key, f"{table_key}.csv")
+
+
+def _required_columns_for_table(table_key: str) -> list[str]:
+    if table_key in {"df_mdi", "df_tdi"}:
+        return REQUIRED_COLUMNS["price_charts"]
+    if table_key in {"df_mdi_bp", "df_tdi_bp"}:
+        return REQUIRED_COLUMNS["business_plan"]
+    if table_key == "df_ppd":
+        return REQUIRED_COLUMNS["bubble_centered"]
+    return []
+
+
+def _validate_edited_dataframe(df: pd.DataFrame, table_key: str) -> list[str]:
+    errors: list[str] = []
+    probe = df.copy()
+    normalize_dataframe_columns(probe)
+
+    required_columns = _required_columns_for_table(table_key)
+    missing = [c for c in required_columns if c not in probe.columns]
+    if missing:
+        errors.append(f"Missing required column(s): {', '.join(missing)}")
+
+    if "customer" in probe.columns:
+        empty_customers = probe["customer"].astype(str).str.strip().eq("").sum()
+        if empty_customers:
+            errors.append(f"'customer' has {int(empty_customers)} empty cell(s).")
+
+    numeric_candidates = [c for c in STRICT_NUMERIC + ALLOW_NEGATIVE if c in probe.columns]
+    for col in numeric_candidates:
+        source = probe[col]
+        parsed = coerce_messy_numeric(source)
+        bad_mask = source.notna() & source.astype(str).str.strip().ne("") & parsed.isna()
+        bad_count = int(bad_mask.sum())
+        if bad_count:
+            bad_rows = list((probe.index[bad_mask] + 1).astype(int)[:5])
+            errors.append(
+                f"Column '{col}' has {bad_count} invalid value(s). Example row(s): {bad_rows}"
+            )
+    return errors
+
+
+def _mark_editor_changed(table_key: str) -> None:
+    st.session_state[f"editor_changed_{table_key}"] = True
 
 
 def main_app(country, material, show_upload_section):
@@ -273,18 +341,60 @@ def main_app(country, material, show_upload_section):
 
     with tab_data:
         st.subheader("Data Management")
-        st.caption("Review and edit source tables directly. Changes are applied immediately in this session.")
+        st.caption(
+            "Review and edit source tables. Data stays in memory until session ends or new upload replaces it."
+        )
         if st.session_state.dataframes:
             table_key = st.selectbox("Select Table to Edit", list(st.session_state.dataframes.keys()))
+            editor_key = f"editor_{table_key}"
             edited_df = st.data_editor(
                 st.session_state.dataframes[table_key],
                 num_rows="dynamic",
-                key=f"editor_{table_key}",
+                key=editor_key,
+                on_change=_mark_editor_changed,
+                args=(table_key,),
             )
-            if not edited_df.equals(st.session_state.dataframes[table_key]):
-                st.session_state.dataframes[table_key] = edited_df
-                st.session_state.data_edited = True
-                st.session_state.chart_settings["auto_generate_chart"] = True
+
+            validation_errors = _validate_edited_dataframe(edited_df, table_key)
+            has_changes = not edited_df.equals(st.session_state.dataframes[table_key])
+
+            if st.session_state.get(f"editor_changed_{table_key}") and validation_errors:
+                st.warning("Please fix invalid cells before applying changes or generating charts.")
+                for msg in validation_errors[:8]:
+                    st.write(f"- {msg}")
+
+            c_apply, c_save = st.columns([1, 1])
+            with c_apply:
+                if st.button("Apply Changes to Session", type="primary", use_container_width=True):
+                    if validation_errors:
+                        st.error("Cannot apply changes. Data contains invalid values.")
+                    elif has_changes:
+                        st.session_state.dataframes[table_key] = edited_df.copy()
+                        st.session_state.data_edited = True
+                        st.session_state.chart_settings["auto_generate_chart"] = False
+                        st.success("Changes applied. You can now generate visualization.")
+                    else:
+                        st.info("No changes detected.")
+
+            with c_save:
+                export_df = edited_df.copy() if has_changes else st.session_state.dataframes[table_key].copy()
+                base_name = _expected_filename(country, material, table_key)
+                name_without_ext = os.path.splitext(base_name)[0]
+                modified_date = datetime.now().strftime("%Y%m%d-%H%M%S")
+                output_name = f"{name_without_ext}-{modified_date}.csv"
+
+                if validation_errors:
+                    st.button("Save Edited CSV to Disk", use_container_width=True, disabled=True)
+                    st.caption("Fix validation errors to enable CSV save.")
+                else:
+                    st.download_button(
+                        "Save Edited CSV to Disk",
+                        data=export_df.to_csv(index=False, encoding="utf-8-sig"),
+                        file_name=output_name,
+                        mime="text/csv",
+                        use_container_width=True,
+                    )
+                    st.caption("Save location is managed by your browser download settings.")
 
     with tab_settings:
         st.subheader("Visual & Axis Refinement")

@@ -46,6 +46,26 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+## Authentication Setup (Required)
+
+The app now requires sign-in before users can access dashboard content.
+
+Set multi-user credentials (environment variables or Streamlit secrets):
+
+- `APP_LOGIN_CREDENTIALS` in format `user1:pass1,user2:pass2`
+
+For your requested 4 users, example `.env`:
+
+```env
+APP_LOGIN_CREDENTIALS=hiep:12345,binh:12345,chuong:12345,bella:12345
+```
+
+If `APP_LOGIN_CREDENTIALS` is not set, the app uses these built-in defaults:
+- `hiep:12345`
+- `binh:12345`
+- `chuong:12345`
+- `bella:12345`
+
 ## Deploy on Render (GitHub)
 
 Typical failures come from **wrong port/host** (Streamlit defaults to `localhost` and a fixed port; Render injects **`PORT`** and expects **`0.0.0.0`**).
