@@ -7,7 +7,7 @@ from config import REQUIRED_COLUMNS, SUPPLIERS
 
 from dashboard.plotly_legend import update_legend_horizontal_bottom, update_legend_vertical_right
 from dashboard.validation import validate_dataframe
-from dashboard.year_filters import resolve_year_for_bubble_charts
+from dashboard.year_filters import filter_dataframe_by_calendar_years, resolve_year_for_bubble_charts
 
 
 def plot_customer_demand(
@@ -26,6 +26,7 @@ def plot_customer_demand(
     y_min,
     y_max,
     demand_power_alpha=1.0,
+    selected_years=None,
 ):
     """Plot customer demand chart with legend at bottom."""
     if not validate_dataframe(
@@ -36,6 +37,14 @@ def plot_customer_demand(
         files_uploaded=True,
     ):
         return None
+    if selected_years is not None and len(selected_years) == 0:
+        st.warning("Select at least one year to show on the chart.")
+        return None
+    if selected_years is not None:
+        df = filter_dataframe_by_calendar_years(df, selected_years)
+        if df.empty:
+            st.warning("No rows left for the selected year(s).")
+            return None
     suppliers = SUPPLIERS[material.lower()]
     available_suppliers = drawchat.demand_chart_volume_columns(
         df.columns, material=material, suppliers_fallback=suppliers
@@ -97,6 +106,7 @@ def plot_price_volume(
     selected_price_columns,
     price_annotation_fontsize,
     annotation_spacing,
+    selected_years=None,
 ):
     """Plot price vs volume chart with selected price columns and legend at bottom."""
     if not validate_dataframe(
@@ -107,6 +117,14 @@ def plot_price_volume(
         files_uploaded=True,
     ):
         return None
+    if selected_years is not None and len(selected_years) == 0:
+        st.warning("Select at least one year to show on the chart.")
+        return None
+    if selected_years is not None:
+        df = filter_dataframe_by_calendar_years(df, selected_years)
+        if df.empty:
+            st.warning("No rows left for the selected year(s).")
+            return None
     df_filtered = df[df["customer"] == customer_name]
     max_demand = df_filtered["demand"].max() if not df_filtered.empty else 0
     max_price = df_filtered["pocket price"].max() if not df_filtered.empty else 0

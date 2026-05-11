@@ -15,6 +15,32 @@ def normalize_bubble_year(y):
     return int(round(float(v)))
 
 
+def calendar_years_for_customer(df, customer_name, customer_col="customer", year_col="year"):
+    """Sorted unique calendar years for ``customer_name`` (for demand / price-volume year pickers)."""
+    if df is None or df.empty or year_col not in df.columns or not customer_name:
+        return []
+    sub = df[df[customer_col] == customer_name]
+    if sub.empty:
+        return []
+    ycal = drawchat._series_calendar_year(sub[year_col]).dropna()
+    if ycal.empty:
+        return []
+    return sorted({int(x) for x in ycal.unique()})
+
+
+def filter_dataframe_by_calendar_years(df, selected_years, year_col="year"):
+    """Keep only rows whose ``year`` resolves to one of ``selected_years`` (calendar ints)."""
+    if df is None or df.empty or year_col not in df.columns:
+        return df
+    if selected_years is None:
+        return df
+    if len(selected_years) == 0:
+        return df.iloc[0:0].copy()
+    ycal = drawchat._series_calendar_year(df[year_col])
+    want = {int(x) for x in selected_years}
+    return df.loc[ycal.isin(want)].copy()
+
+
 def resolve_year_for_bubble_charts(df, year_filter):
     """
     Same logic as former ``plot_bubble_chart`` / ``plot_bubble_chart_centered`` year branches.

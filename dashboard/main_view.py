@@ -25,7 +25,7 @@ from dashboard.charts import (
 from dashboard.data import get_dataframe, load_country_data
 from dashboard.ranges import get_price_range
 from dashboard.styles import MAIN_PAGE_STYLE
-from dashboard.year_filters import normalize_bubble_year
+from dashboard.year_filters import calendar_years_for_customer, normalize_bubble_year
 
 
 def _expected_filename(country: str, material: str, table_key: str) -> str:
@@ -164,6 +164,7 @@ def main_app(country, material, show_upload_section):
                 )
         selected_bubble_year = normalize_bubble_year(selected_bubble_year)
 
+        selected_chart_years = None
         col_plot, col_ctrl = st.columns([3, 1])
 
         with col_ctrl:
@@ -179,6 +180,30 @@ def main_app(country, material, show_upload_section):
                             customer_name = st.selectbox("Select Account", customers, key="customer_select")
                         else:
                             st.warning("No 'customer' column found.")
+
+                        if (
+                            customer_name
+                            and chart_type in ("Customer Demand", "Account price vs Volume")
+                            and "year" in df_current.columns
+                        ):
+                            years_opts = calendar_years_for_customer(df_current, customer_name)
+                            if years_opts:
+                                _yrs_sig = (chart_type, customer_name, tuple(years_opts))
+                                if st.session_state.get("_viz_chart_years_sig") != _yrs_sig:
+                                    st.session_state["_viz_chart_years_sig"] = _yrs_sig
+                                    st.session_state["viz_chart_years_multiselect"] = list(years_opts)
+                                selected_chart_years = st.multiselect(
+                                    "Years to show on chart",
+                                    options=years_opts,
+                                    default=st.session_state.get(
+                                        "viz_chart_years_multiselect", years_opts
+                                    ),
+                                    key="viz_chart_years_multiselect",
+                                    help=(
+                                        "Pick one year, several years, or leave all selected "
+                                        "to show every year in the file for this account."
+                                    ),
+                                )
 
                     if is_bubble_chart and "year" not in df_current.columns:
                         st.error("Column 'year' is required for Bubble Charts.")
@@ -273,7 +298,14 @@ def main_app(country, material, show_upload_section):
                     chart_fig = None
 
                     if chart_type == "Customer Demand" and customer_name:
-                        chart_fig = plot_customer_demand(df_current, customer_name, material, is_taiwan, **config)
+                        chart_fig = plot_customer_demand(
+                            df_current,
+                            customer_name,
+                            material,
+                            is_taiwan,
+                            selected_years=selected_chart_years,
+                            **config,
+                        )
 
                     elif chart_type == "Account price vs Volume" and customer_name:
                         sel_prices = st.session_state.get("price_columns_select", ["pocket price"])
@@ -283,6 +315,7 @@ def main_app(country, material, show_upload_section):
                             material,
                             is_taiwan,
                             selected_price_columns=sel_prices,
+                            selected_years=selected_chart_years,
                             **config,
                         )
 

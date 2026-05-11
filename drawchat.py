@@ -34,6 +34,51 @@ def demand_chart_volume_columns(all_columns, material=None, suppliers_fallback=N
     return [s for s in (suppliers_fallback or []) if s in cols]
 
 
+def _format_year_label_for_chart(year_value):
+    """Return display label for chart X-axis year values."""
+    if pd.isna(year_value):
+        return year_value
+    # Business rule: when data year is 2026, show it as Q1-2026 on chart labels.
+    if pd.api.types.is_datetime64_any_dtype(pd.Series([year_value])):
+        return "Q1-2026" if year_value.year == 2026 else year_value
+    year_num = pd.to_numeric(pd.Series([year_value]), errors='coerce').iloc[0]
+    if pd.notna(year_num) and int(round(float(year_num))) == 2026:
+        return "Q1-2026"
+    return year_value
+
+
+def _build_chart_year_labels(year_series):
+    """Vectorized display labels for chart X-axis values."""
+    return [_format_year_label_for_chart(v) for v in year_series.tolist()]
+
+
+def _price_line_y_and_text(series):
+    """
+    Price line Y values: NaN or 0 become None so Plotly does not draw segments to zero.
+    Parallel text labels: empty string where there is no valid price to show.
+    """
+    y_out = []
+    text_out = []
+    for v in series.tolist():
+        if pd.isna(v):
+            y_out.append(None)
+            text_out.append("")
+            continue
+        try:
+            fv = float(v)
+        except (TypeError, ValueError):
+            y_out.append(None)
+            text_out.append("")
+            continue
+        if fv == 0.0:
+            y_out.append(None)
+            text_out.append("")
+        else:
+            y_out.append(fv)
+            text_out.append(f"{fv:.2f}")
+    return y_out, text_out
+
+
 def plot_customer_demand(df, customer_name, customer_column, suppliers, year_column, y_range, 
                          title_fontsize, axis_label_fontsize, tick_fontsize, legend_fontsize, 
                          legend_title_fontsize, percentage_label_fontsize, customer_name_font_size, 
@@ -67,6 +112,7 @@ def plot_customer_demand(df, customer_name, customer_column, suppliers, year_col
         )
 
     fig = go.Figure()
+    x_labels = _build_chart_year_labels(df_filtered[year_column])
 
     # Visual scaling for display only; hover/text still show real values.
     alpha = float(demand_power_alpha) if demand_power_alpha is not None else 1.0
@@ -104,7 +150,7 @@ def plot_customer_demand(df, customer_name, customer_column, suppliers, year_col
             else px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)]
         )
         fig.add_trace(go.Bar(
-            x=df_filtered[year_column],
+            x=x_labels,
             y=values,
             name=supplier.capitalize(),
             text=text_labels,
@@ -137,7 +183,7 @@ def plot_customer_demand(df, customer_name, customer_column, suppliers, year_col
         demand_values = [total_supply_by_year.get(row[year_column], 0.0) for _, row in df_filtered.iterrows()]
         demand_values_scaled = [scaled_total_by_year.get(year, 0.0) for year in df_filtered[year_column].tolist()]
     fig.add_trace(go.Bar(
-        x=df_filtered[year_column],
+        x=x_labels,
         y=demand_values_scaled,
         name='Total Demand',
         width=0.7, # Match the supplier bar width
@@ -934,6 +980,7 @@ def plot_customer_demand_with_price(df, customer_name, customer_column, supplier
         raise ValueError(f"No data for customer {customer_name}")
     
     fig = go.Figure()
+    x_labels = _build_chart_year_labels(df_filtered[year_column])
     
     # Calculate total DEMAND for each year
     total_demand_by_year = {}
@@ -962,7 +1009,7 @@ def plot_customer_demand_with_price(df, customer_name, customer_column, supplier
                 text_labels.append("0 mt\n0%")
         
         fig.add_trace(go.Bar(
-            x=df_filtered[year_column],
+            x=x_labels,
             y=values,
             name="Covestro",
             text=text_labels,
@@ -982,7 +1029,7 @@ def plot_customer_demand_with_price(df, customer_name, customer_column, supplier
         demand_values = [total_demand_by_year[year] for year in df_filtered[year_column]]
     
     fig.add_trace(go.Bar(
-        x=df_filtered[year_column],
+        x=x_labels,
         y=demand_values,
         name='Total Demand',
         marker=dict(
@@ -999,14 +1046,22 @@ def plot_customer_demand_with_price(df, customer_name, customer_column, supplier
     
     # Smart label staggering to reduce overlap when price lines are close.
     num_points = len(df_filtered)
-    text_positions = {col: ['top center'] * num_points for col in price_columns}
-    text_values = {
-        col: df_filtered[col].round(2).astype(str).tolist()
-        for col in price_columns
-    }
+    text_positions = {col: ["top center"] * num_points for col in price_columns}
+    text_values = {}
+    y_price_by_col = {}
+    for col in price_columns:
+        y_series, texts = _price_line_y_and_text(df_filtered[col])
+        y_price_by_col[col] = y_series
+        text_values[col] = texts
     stagger_positions = [
-        'top center', 'top right', 'middle right', 'bottom right',
-        'bottom center', 'bottom left', 'middle left', 'top left'
+        "top center",
+        "top right",
+        "middle right",
+        "bottom right",
+        "bottom center",
+        "bottom left",
+        "middle left",
+        "top left",
     ]
     close_threshold = max(float(annotation_spacing), 0.01)
 
@@ -1014,7 +1069,7 @@ def plot_customer_demand_with_price(df, customer_name, customer_column, supplier
         points = []
         for col in price_columns:
             val = df_filtered.iloc[idx][col]
-            if pd.notna(val):
+            if pd.notna(val) and float(val) != 0.0:
                 points.append((col, float(val)))
         if len(points) <= 1:
             continue
@@ -1026,39 +1081,42 @@ def plot_customer_demand_with_price(df, customer_name, customer_column, supplier
             while end + 1 < len(points) and abs(points[end][1] - points[end + 1][1]) <= close_threshold:
                 end += 1
 
-            cluster = points[start:end + 1]
+            cluster = points[start : end + 1]
             if len(cluster) > 1:
                 for j, (col, _) in enumerate(cluster):
                     if j < len(stagger_positions):
                         text_positions[col][idx] = stagger_positions[j]
                     else:
-                        text_values[col][idx] = ''
+                        text_values[col][idx] = ""
             start = end + 1
 
     # Price lines
     for i, price_col in enumerate(price_columns):
-        price_label = price_col.replace('_', ' ').title()
+        price_label = price_col.replace("_", " ").title()
         series_color = price_colors[i]
-        fig.add_trace(go.Scatter(
-            x=df_filtered[year_column],
-            y=df_filtered[price_col],
-            name=price_label,
-            mode='lines+markers+text',
-            yaxis='y2',
-            text=text_values[price_col],
-            textposition=text_positions[price_col],
-            textfont=dict(size=price_annotation_fontsize*1.4, color=price_colors[i]),
-            line=dict(color=price_colors[i], width=2),
-            hoverlabel=dict(
-                bgcolor=series_color,
-                bordercolor=series_color,
-                font=dict(color='white')
-            ),
-            hovertemplate=(
-                'Year : <b>%{x}</b><br>' +
-                f'{price_label}: <b>%{{y:.2f}}</b> USD/kg<extra></extra>'
+        y_line = y_price_by_col[price_col]
+        fig.add_trace(
+            go.Scatter(
+                x=x_labels,
+                y=y_line,
+                name=price_label,
+                mode="lines+markers+text",
+                yaxis="y2",
+                text=text_values[price_col],
+                textposition=text_positions[price_col],
+                textfont=dict(size=price_annotation_fontsize * 1.4, color=price_colors[i]),
+                line=dict(color=price_colors[i], width=2),
+                connectgaps=False,
+                hoverlabel=dict(
+                    bgcolor=series_color,
+                    bordercolor=series_color,
+                    font=dict(color="white"),
+                ),
+                hovertemplate=(
+                    "Year : <b>%{x}</b><br>" + f"{price_label}: <b>%{{y:.2f}}</b> USD/kg<extra></extra>"
+                ),
             )
-        ))
+        )
     
     # Set axis ranges
     if y_demand_min is not None and y_demand_max is not None:
